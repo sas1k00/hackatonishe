@@ -189,7 +189,7 @@
       <h1>Возможности для тебя</h1>
       <p class="muted">Проверили ${res.length} ${M.plural(res.length, 'возможность', 'возможности', 'возможностей')} по твоему профилю. <a href="#profile">Изменить профиль</a></p>
       <div class="summary" role="group" aria-label="Фильтр">
-        ${[['all', `Все подходящие · ${res.length - count('no')}`], ['fit', `Подходишь · ${count('fit')}`], ['almost', `Почти · ${count('almost')}`], ['later', `Позже · ${count('later')}`], ['no', `Не подходит · ${count('no')}`]]
+        ${[['all', `Все · ${res.length - count('no')}`], ['fit', `Подходишь · ${count('fit')}`], ['almost', `Почти · ${count('almost')}`], ['later', `Позже · ${count('later')}`], ['no', `Не подходит · ${count('no')}`]]
           .map(([k, l]) => `<button class="filter" data-f="${k}" aria-pressed="${filter === k}">${l}</button>`).join('')}
       </div>
       ${shown.length ? `<div class="opps">${shown.map(oppCard).join('')}</div>` : '<p class="card">В этой группе пусто.</p>'}`;
@@ -341,6 +341,12 @@
     else if (view === 'plan') viewPlan();
     else if (view === 'data') viewData();
     else if (view === 'demo') { state.profile = Object.assign({}, DEMO); save(); location.hash = '#matches'; return; }
+    else if (view === 'demo-plan') {
+      // Запасной вариант для живой демонстрации: готовый профиль и план
+      state.profile = Object.assign({}, DEMO);
+      state.picks = { yygs: { deadline: 1 }, uwc: {}, rise: {}, rknp: {} };
+      save(); location.hash = '#plan'; return;
+    }
     else viewHome();
     window.scrollTo(0, 0);
     const h = app.querySelector('h1'); if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
