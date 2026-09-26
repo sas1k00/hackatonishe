@@ -62,6 +62,13 @@
   /* Целевой дедлайн: выбранный пользователем, иначе ближайший, который ещё не прошёл. */
   function targetDeadline(opp, today, pick) {
     if (pick && pick.manualDate) return { label: 'Дата, указанная вами', date: pick.manualDate, exact: true, manual: true };
+    if (pick && pick.shift && opp.deadlines.length) {
+      // Долгосрочная цель: тот же срок через pick.shift лет — это прогноз, а не опубликованная дата
+      const base = opp.deadlines[0];
+      const d = addYears(parse(base.date), pick.shift);
+      return { label: `${base.label} (цикл ${d.getFullYear()})`, date: iso(d), exact: false, future: true, shift: pick.shift,
+        basis: `прогноз: срок текущего цикла, сдвинутый на ${pick.shift} ${plural(pick.shift, 'год', 'года', 'лет')}` };
+    }
     const future = opp.deadlines.filter(d => parse(d.date) >= parse(iso(today)));
     if (opp.deadlineChoice && pick && pick.deadline != null && opp.deadlines[pick.deadline] && future.includes(opp.deadlines[pick.deadline])) return opp.deadlines[pick.deadline];
     return future[0] || null;
@@ -127,7 +134,8 @@
    * later — сейчас нельзя, но станет можно через 1–3 года; no — не подходит.
    */
   function match(profile, opp, today, pick) {
-    const dl = targetDeadline(opp, today, pick);
+    // Долгосрочные цели оцениваются по текущему циклу — «позже» считается ниже, как для всех
+    const dl = targetDeadline(opp, today, pick && pick.shift ? null : pick);
     const onDate = dl ? parse(dl.date) : today;
     const checks = checkReqs(profile, opp, onDate, profile.status);
     if (profile.onlyFree && opp.free !== true) {
@@ -137,7 +145,7 @@
     const hard = checks.filter(c => c.level === 'hard');
     const gaps = checks.filter(c => c.level === 'gap');
     let status = hard.length ? 'no' : gaps.length ? 'almost' : 'fit';
-    let laterYear = null;
+    let laterYear = null, laterShift = null;
     if (status === 'no') {
       // Прогноз: пересчитать профиль на 1–3 учебных года вперёд
       let st = profile.status;
@@ -146,12 +154,12 @@
         const future = addYears(onDate, k);
         const shifted = Object.assign({}, opp, { req: Object.assign({}, opp.req, opp.req.age && opp.req.age.at ? { age: Object.assign({}, opp.req.age, { at: iso(addYears(parse(opp.req.age.at), k)) }) } : {}) });
         const fc = checkReqs(profile, shifted, future, st);
-        if (!fc.some(c => c.level === 'hard')) { status = 'later'; laterYear = future.getFullYear(); break; }
+        if (!fc.some(c => c.level === 'hard')) { status = 'later'; laterYear = future.getFullYear(); laterShift = k; break; }
       }
     }
     const relevance = (opp.tags || []).filter(t => (profile.interests || []).includes(t)).length;
     const daysLeft = dl ? daysBetween(today, parse(dl.date)) : null;
-    return { opp, status, checks, deadline: dl, daysLeft, relevance, laterYear };
+    return { opp, status, checks, deadline: dl, daysLeft, relevance, laterYear, laterShift };
   }
   M.match = match;
 
@@ -163,14 +171,19 @@
   };
 
   /* ---------- план ---------- */
-  function stepKeys(profile, opp, today) {
+  function stepKeys(profile, opp, today, pick) {
     const m = checkReqs(profile, opp, today, profile.status);
     const eng = m.find(c => c.kind === 'english');
-    return opp.steps.filter(k => {
+    const keys = opp.steps.filter(k => {
       if (k === 'ielts') return eng && eng.level !== 'ok';
       if (k === 'english') return eng && eng.level !== 'ok';
       return true;
     });
+    if (pick && pick.shift) {
+      keys.unshift('future');
+      if (eng && eng.level !== 'ok') keys.unshift('englishLong');
+    }
+    return keys;
   }
 
   /*
@@ -186,9 +199,12 @@
     if (!dl) return { opp, deadline: null, steps: custom.sort((a, b) => a.date - b.date), compressed: false };
     const end = parse(dl.date);
     const steps = [];
-    stepKeys(profile, opp, today).forEach(key => {
+    stepKeys(profile, opp, today, pick).forEach(key => {
       M.STEP_TEMPLATES[key].forEach((t, i) => {
-        steps.push({ id: `${opp.id}:${key}:${i}`, opp: opp.id, text: t.t, date: addDays(end, -7 * t.w), weeks: t.w, deadline: !!t.deadline, school: !!t.school, post: t.w < 0 });
+        // asap — навык, который выгоднее начать сразу, а не «ровно за N недель»
+        const ideal = addDays(end, -7 * t.w);
+        const date = t.asap && parse(iso(today)) < ideal ? parse(iso(today)) : ideal;
+        steps.push({ id: `${opp.id}:${key}:${i}`, opp: opp.id, text: t.t, date, weeks: t.w, deadline: !!t.deadline, school: !!t.school, post: t.w < 0 });
       });
     });
     // У конкурсов и олимпиад нет шага «отправить заявку» — сам этап становится финальной точкой плана
@@ -209,7 +225,7 @@
     });
     steps.push(...custom);
     steps.sort((a, b) => a.date - b.date);
-    return { opp, deadline: dl, steps, compressed };
+    return { opp, deadline: dl, steps, compressed, future: !!(pick && pick.shift) };
   }
 
   M.buildPlan = function (profile, picks, today) {

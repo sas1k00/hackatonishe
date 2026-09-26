@@ -1,0 +1,17 @@
+name: Проверка источников
+
+# Раз в неделю проверяем, что страницы организаторов, на которых основаны карточки, открываются.
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  sources:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node tests/check-sources.js

@@ -165,6 +165,7 @@
     const gaps = r.checks.filter(c => c.level === 'gap').length;
     const statusText = r.status === 'fit' ? '✓ Подходишь' : r.status === 'almost' ? `△ Почти: ${gaps} ${M.plural(gaps, 'пробел', 'пробела', 'пробелов')}` : r.status === 'later' ? `⏳ Станет доступно в ${r.laterYear}` : '✗ Не подходит';
     const canPick = r.status === 'fit' || r.status === 'almost';
+    const canPlanLater = r.status === 'later' && r.laterShift && o.deadlines.length;
     const multi = o.deadlineChoice && o.deadlines.filter(d => M.date.parse(d.date) >= today()).length > 1;
     return `<article class="opp" aria-labelledby="t-${o.id}">
       <div class="opp-head">
@@ -191,6 +192,7 @@
           ${multi && !picked ? `<label class="sr-only" for="dl-${o.id}">Какой срок</label><select id="dl-${o.id}" class="small" style="width:auto;min-height:38px">${o.deadlines.map((d, i) => M.date.parse(d.date) >= today() ? `<option value="${i}">${esc(d.label)} — ${M.fmt(M.date.parse(d.date))}</option>` : '').join('')}</select>` : ''}
           <button class="btn small ${picked ? '' : 'primary'}" data-pick="${o.id}" aria-pressed="${picked}">${picked ? '✓ В плане' : '+ В мой план'}</button>
         </div>` : ''}
+        ${canPlanLater ? `<button class="btn small ${picked ? '' : 'primary'}" data-pick="${o.id}" data-shift="${r.laterShift}" aria-pressed="${picked}">${picked ? `✓ Цель на ${r.laterYear}` : `+ Цель на ${r.laterYear}`}</button>` : ''}
       </div>
     </article>`;
   }
@@ -216,7 +218,7 @@
       if (state.picks[id]) { delete state.picks[id]; announce('Убрано из плана'); }
       else {
         const sel = app.querySelector(`#dl-${id}`);
-        state.picks[id] = { deadline: sel ? Number(sel.value) : null };
+        state.picks[id] = b.dataset.shift ? { shift: Number(b.dataset.shift) } : { deadline: sel ? Number(sel.value) : null };
         announce(`${M.OPP[id].title} добавлено в план`);
       }
       save(); viewMatches();
@@ -245,8 +247,10 @@
     const thisWeek = M.date.iso(M.weekStart(t));
     const nextWeek = M.date.iso(M.date.addDays(M.weekStart(t), 7));
     rest.forEach(s => {
-      const k = M.date.iso(M.weekStart(s.date));
-      const title = k === thisWeek ? 'Эта неделя' : k === nextWeek ? 'Следующая неделя' : `Неделя с ${M.fmt(M.weekStart(s.date))}`;
+      const far = M.date.daysBetween(t, s.date) > 56;
+      const k = far ? `m${s.date.getFullYear()}-${s.date.getMonth()}` : M.date.iso(M.weekStart(s.date));
+      const month = s.date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '');
+      const title = far ? month[0].toUpperCase() + month.slice(1) : k === thisWeek ? 'Эта неделя' : k === nextWeek ? 'Следующая неделя' : `Неделя с ${M.fmt(M.weekStart(s.date))}`;
       const g = groups.find(x => x.key === k) || (groups.push({ key: k, title, steps: [] }), groups[groups.length - 1]);
       g.steps.push(s);
     });
@@ -278,7 +282,8 @@
             const o = it.opp;
             return `<li>
               <div class="goal-row"><b><span class="dot" style="background:${colorOf(o.id)}" aria-hidden="true"></span>${esc(o.title)}</b><button class="btn ghost small" data-remove="${o.id}" aria-label="Убрать ${esc(o.title)} из плана">Убрать</button></div>
-              <div class="small muted">${it.deadline ? `${esc(it.deadline.label)}: ${M.fmt(M.date.parse(it.deadline.date))}${it.deadline.exact ? '' : ' (ориентировочно)'}` : 'Срок не опубликован'} · ${pr.d} из ${pr.n}</div>
+              ${it.future ? '<span class="pill mine">долгосрочная цель</span>' : ''}
+              <div class="small muted">${it.deadline ? `${esc(it.deadline.label)}: ${M.fmt(M.date.parse(it.deadline.date))}${it.deadline.exact ? '' : it.deadline.future ? ' (прогноз)' : ' (ориентировочно)'}` : 'Срок не опубликован'} · ${pr.d} из ${pr.n}</div>
               <div class="bar" role="progressbar" aria-valuenow="${pr.pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Прогресс: ${esc(o.title)}"><i style="width:${pr.pct}%"></i></div>
               <div class="row" style="margin-top:8px">
                 <button class="btn small" data-submitted="${o.id}" aria-pressed="${!!state.picks[o.id].submitted}">${state.picks[o.id].submitted ? `✓ Заявка отправлена ${M.date.parse(state.picks[o.id].submitted).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}` : 'Отметить: заявка отправлена'}</button>

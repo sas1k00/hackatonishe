@@ -1,0 +1,235 @@
+/*
+ * Автотесты Maqsat. Запускаются и в браузере (tests.html), и в Node.js (tests/run-node.js, GitHub Actions).
+ * «Сегодня» зафиксировано — 26.09.2026, чтобы результаты не зависели от даты запуска.
+ */
+(function () {
+  const M = window.M;
+  M.runTests = function () {
+      const T0 = M.date.parse('2026-09-26');
+      const results = [];
+      function test(name, fn) {
+        let ok = false, err = '';
+        try { fn(); ok = true; } catch (e) { err = e.message; }
+        results.push({ name, ok, err });
+      }
+      function assert(c, m) { if (!c) throw new Error(m || 'assertion failed'); }
+      function eq(a, b, m) { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error((m || '') + ` ожидалось ${JSON.stringify(b)}, получено ${JSON.stringify(a)}`); }
+
+      const base = { birthYear: 2010, birthMonth: 3, status: 'g10', kz: true, english: 2, ielts: null, avg: 4.6, city: 'almaty', interests: ['abroad', 'summer'], onlyFree: false };
+      const P = over => Object.assign({}, base, over || {});
+      const m = (id, p) => M.match(p || base, M.OPP[id], T0);
+
+      // ---------- база ----------
+      test('База: id уникальны, у всех есть https-источник', () => {
+        eq(new Set(M.OPPORTUNITIES.map(o => o.id)).size, M.OPPORTUNITIES.length);
+        M.OPPORTUNITIES.forEach(o => assert(/^https:\/\//.test(o.source.url), o.id));
+      });
+      test('База: у каждого дедлайна корректная дата и флаг exact; у ориентировочных есть основание', () => {
+        M.OPPORTUNITIES.forEach(o => o.deadlines.forEach(d => {
+          assert(/^\d{4}-\d{2}-\d{2}$/.test(d.date) && !isNaN(M.date.parse(d.date)), o.id);
+          assert(typeof d.exact === 'boolean', o.id + ' exact');
+          if (!d.exact) assert(d.basis && d.basis.length > 10, o.id + ': нет основания для оценки');
+        }));
+      });
+      test('База: без дедлайна — обязательно объяснение (набор открыт или срок не опубликован)', () => {
+        M.OPPORTUNITIES.filter(o => !o.deadlines.length).forEach(o => assert(o.rolling || o.unknownDeadline, o.id));
+      });
+      test('База: все шаблоны шагов существуют, уровни достоверности допустимы', () => {
+        M.OPPORTUNITIES.forEach(o => {
+          o.steps.forEach(k => assert(M.STEP_TEMPLATES[k], o.id + ':' + k));
+          Object.values(o.reqConf || {}).forEach(c => assert(['official', 'secondary', 'estimate'].includes(c), o.id + ':' + c));
+          (o.req.status || []).forEach(s => assert(M.STATUSES.some(x => x.id === s), o.id + ':' + s));
+        });
+      });
+
+      // ---------- условия ----------
+      test('Возраст считается на дату из условий: родился в марте 2010 → на 18.07.2027 будет 17', () => {
+        eq(M.ageAt(base, M.date.parse('2027-07-18')), 17);
+        eq(M.ageAt({ birthYear: 2010, birthMonth: 9 }, M.date.parse('2027-07-18')), 16);
+      });
+      test('UWC: 10 класс, 17 лет на 01.09.2027, гражданин РК → подходит', () => eq(m('uwc').status, 'fit'));
+      test('UWC без гражданства/ВНЖ РК → не подходит и не «позже»', () => eq(m('uwc', P({ kz: false })).status, 'no'));
+      test('YYGS: B1 при ориентире B2 → «почти», пробел — английский', () => {
+        const r = m('yygs');
+        eq(r.status, 'almost');
+        assert(r.checks.find(c => c.kind === 'english').level === 'gap');
+        eq(r.checks.find(c => c.kind === 'english').conf, 'estimate', 'уровень английского помечен как наша оценка:');
+      });
+      test('NU: 10 класс → «позже», доступно в следующем цикле', () => {
+        const r = m('nu');
+        eq(r.status, 'later'); eq(r.laterYear, 2028);
+      });
+      test('NU: IELTS 6.5 закрывает языковое требование, IELTS 5.5 — нет', () => {
+        assert(m('nu', P({ status: 'g11', ielts: 6.5 })).checks.find(c => c.kind === 'english').level === 'ok');
+        assert(m('nu', P({ status: 'g11', ielts: 5.5 })).checks.find(c => c.kind === 'english').level === 'gap');
+      });
+      test('NU: средний балл ниже 4.0 — пробел', () => eq(m('nu', P({ status: 'g11', ielts: 6.5, avg: 3.8 })).status, 'almost'));
+      test('alem: учусь в Алматы — подходит, но с предупреждением про очный формат в Астане', () => {
+        const r = m('alem');
+        eq(r.status, 'fit');
+        eq(r.checks.find(c => c.kind === 'city').level, 'warn');
+      });
+      test('12-летняя школа (НИШ): 11 класс — «два последних класса» для UWC и не выпускной для NU', () => {
+        const nis = P({ status: 'g11', school12: true, birthYear: 2010 });
+        eq(m('uwc', nis).checks.find(c => c.kind === 'status').level, 'ok');
+        eq(m('nu', nis).status, 'later');
+        eq(m('nu', nis).laterYear, 2028);
+      });
+      test('Обычная школа: 11 класс — выпускной; для YYGS («не выпускной») не подходит', () => {
+        eq(m('yygs', P({ status: 'g11' })).checks.find(c => c.kind === 'status').level, 'hard');
+        eq(m('yygs', P({ status: 'g11', school12: true })).checks.find(c => c.kind === 'status').level, 'ok');
+      });
+      test('Прогноз: после 11 класса обычной школы — вуз, а в НИШ — 12 класс', () => {
+        eq(M.nextStatus('g11', P()), 'uni');
+        eq(M.nextStatus('g11', P({ school12: true })), 'g12');
+      });
+      test('ML School для школьника: «позже» с оговоркой про направление', () => {
+        const r = m('mlschool');
+        eq(r.status, 'later');
+        assert(/IT-, математическое или техническое/.test(M.OPP.mlschool.laterCondition));
+      });
+      test('IZhO: формально подходит, но есть предупреждение про отбор в команду школы', () => {
+        const r = m('izho');
+        eq(r.status, 'fit');
+        eq(r.checks.find(c => c.kind === 'gate').level, 'warn');
+      });
+      test('UWC: в плане есть шаг после дедлайна — подготовка к финальному этапу отбора', () => {
+        const st = M.buildPlan(base, { uwc: {} }, T0).items[0].steps;
+        const post = st.filter(s => s.date > M.date.parse('2027-01-05'));
+        eq(post.length, 1); eq(M.date.iso(post[0].date), '2027-02-02');
+      });
+      test('Samsung: 26 лет — не подходит (13–25)', () => eq(m('samsung', P({ birthYear: 2000, status: 'grad' })).status, 'no'));
+      test('«Только бесплатные»: платная программа без поддержки — пробел, с финансовой помощью — предупреждение', () => {
+        eq(m('yygs', P({ onlyFree: true })).checks.find(c => c.kind === 'free').level, 'warn');
+        assert(!m('flex', P({ onlyFree: true })).checks.some(c => c.kind === 'free'), 'FLEX бесплатный');
+      });
+      test('Дедлайн: из двух сроков YYGS берётся ближайший будущий; через 19 дней', () => {
+        const r = m('yygs');
+        eq(r.deadline.label, 'Early Action'); eq(r.daysLeft, 19);
+      });
+      test('Прошедшие дедлайны не предлагаются: после 15.10.2026 у YYGS остаётся Regular Decision', () => {
+        eq(M.match(base, M.OPP.yygs, M.date.parse('2026-10-20')).deadline.label, 'Regular Decision');
+      });
+
+      // ---------- план ----------
+      test('План: подготовка идёт до дедлайна, сам дедлайн — отдельный шаг', () => {
+        const plan = M.buildPlan(base, { uwc: {} }, T0);
+        const st = plan.items[0].steps;
+        assert(st.length >= 4);
+        const dl = st.filter(s => s.deadline);
+        eq(dl.length, 1); eq(M.date.iso(dl[0].date), '2027-01-05');
+        st.filter(s => !s.deadline && !s.id.includes(':interview')).forEach(s => assert(s.date <= dl[0].date, s.text));
+      });
+      test('План: если до дедлайна мало времени, шаги сжимаются и ни один не уходит в прошлое', () => {
+        const plan = M.buildPlan(base, { yygs: { deadline: 0 } }, T0);
+        const it = plan.items[0];
+        assert(it.compressed, 'должен быть сжат');
+        it.steps.forEach(s => assert(s.date >= T0, s.text + ' в прошлом'));
+        assert(plan.warnings.some(w => w.type === 'late'));
+      });
+      test('План: у конкурса без шага «заявка» финальной точкой становится сам этап', () => {
+        const st = M.buildPlan(base, { rknp: {} }, T0).items[0].steps;
+        const last = st[st.length - 1];
+        assert(last.deadline); eq(last.text, 'Школьный этап'); eq(M.date.iso(last.date), '2026-10-10');
+      });
+      test('План: при сжатом графике предлагается более поздний срок; Regular Decision даёт полный график', () => {
+        const a = M.buildPlan(base, { yygs: { deadline: 0 } }, T0);
+        const w = a.warnings.find(x => x.type === 'late');
+        eq(w.alt, 1);
+        const b = M.buildPlan(base, { yygs: { deadline: 1 } }, T0);
+        assert(!b.items[0].compressed, 'RD не должен быть сжат');
+      });
+      test('План: этапы конкурса последовательны — сменить «школьный этап» на «финал» не предлагается', () => {
+        const a = M.buildPlan(base, { rknp: {} }, T0);
+        const w = a.warnings.find(x => x.type === 'late' && x.opp === 'rknp');
+        assert(w && w.alt == null, JSON.stringify(w));
+        eq(M.targetDeadline(M.OPP.rknp, T0, { deadline: 1 }).label, 'Школьный этап', 'выбор этапа игнорируется:');
+      });
+      test('План: при IELTS ниже порога добавляются шаги подготовки к IELTS, при достаточном — нет', () => {
+        const need = M.buildPlan(P({ status: 'g11', ielts: 5.5 }), { nu: {} }, T0).steps.filter(s => s.id.includes(':ielts:'));
+        const ok = M.buildPlan(P({ status: 'g11', ielts: 7 }), { nu: {} }, T0).steps.filter(s => s.id.includes(':ielts:'));
+        eq(need.length, 3); eq(ok.length, 0);
+      });
+      test('План: два дедлайна в одну неделю → предупреждение', () => {
+        const plan = M.buildPlan(P({ status: 'g11' }), { hungaricum: {}, rise: {} }, T0);
+        assert(plan.warnings.some(w => w.type === 'clash'), JSON.stringify(plan.warnings));
+      });
+      test('План: срок не опубликован → шагов нет и есть подсказка; дата, указанная вручную, строит план', () => {
+        const a = M.buildPlan(base, { flex: {} }, T0);
+        eq(a.items[0].steps.length, 0); assert(a.warnings.some(w => w.type === 'nodate'));
+        const b = M.buildPlan(base, { flex: { manualDate: '2026-11-20' } }, T0);
+        assert(b.items[0].steps.length > 0); eq(M.date.iso(b.items[0].steps.slice(-1)[0].date), '2026-11-20');
+      });
+      test('План: ручной перенос шага сохраняется', () => {
+        const id = M.buildPlan(base, { uwc: {} }, T0).steps[0].id;
+        const p = M.buildPlan(base, { uwc: { moved: { [id]: '2026-12-01' } } }, T0);
+        eq(M.date.iso(p.steps.find(s => s.id === id).date), '2026-12-01');
+      });
+
+      // ---------- долгосрочные цели ----------
+      test('Долгосрочная цель: НУ для 10-классника — срок сдвигается на цикл 2028 и помечается как прогноз', () => {
+        const r = m('nu');
+        eq(r.laterShift, 1);
+        const it = M.buildPlan(base, { nu: { shift: r.laterShift } }, T0).items[0];
+        assert(it.future);
+        eq(M.date.iso(M.date.parse(it.deadline.date)), '2028-08-17');
+        eq(it.deadline.exact, false); assert(/прогноз/.test(it.deadline.basis));
+      });
+      test('Долгосрочная цель: план начинается сейчас — английский заранее и проверка условий нового цикла', () => {
+        const it = M.buildPlan(base, { nu: { shift: 1 } }, T0).items[0];
+        assert(it.steps.some(s => /регулярно заниматься английским/.test(s.text)), 'нет длинной подготовки по английскому');
+        assert(it.steps.some(s => /условия нового цикла/.test(s.text)));
+        it.steps.forEach(s => assert(s.date >= T0, 'шаг в прошлом: ' + s.text));
+        assert(!it.compressed, 'на год вперёд план не должен сжиматься');
+        eq(M.date.iso(it.steps.find(s => /регулярно заниматься/.test(s.text)).date), '2026-09-26', 'английский — начать сразу:');
+      });
+      test('Долгосрочная цель не меняет оценку карточки: статус считается по текущему циклу', () => {
+        const r = M.match(base, M.OPP.nu, T0, { shift: 1 });
+        eq(r.status, 'later'); eq(r.laterYear, 2028);
+      });
+
+      // ---------- по итогам интервью ----------
+      test('Интервью (завуч): шаги, где нужна школа (рекомендации, документы), помечены', () => {
+        const st = M.buildPlan(base, { turkiye: {} }, T0).items[0].steps;
+        const school = st.filter(s => s.school).map(s => s.text);
+        assert(school.some(t => /рекомендации/.test(t)) && school.some(t => /документы/.test(t)), JSON.stringify(school));
+      });
+      test('Интервью (ученик FLEX): свои задачи попадают в план и календарь, даже когда срок программы не опубликован', () => {
+        const pick = { flex: { custom: [{ id: '1', text: 'Спросить выпускника FLEX про собеседование', date: '2026-10-05' }] } };
+        const plan = M.buildPlan(base, pick, T0);
+        eq(plan.steps.length, 1); assert(plan.steps[0].custom);
+        assert(/Спросить выпускника FLEX/.test(M.toICS(plan).replace(/\r\n /g, '')));
+        const bad = M.buildPlan(base, { flex: { custom: [{ id: '2', text: 'x', date: 'завтра' }] } }, T0);
+        eq(bad.steps.length, 0, 'некорректная дата отбрасывается:');
+      });
+      test('Интервью (ученик FLEX): «заявка отправлена» закрывает подготовку, но не этап отбора после дедлайна', () => {
+        const it = M.buildPlan(base, { uwc: {} }, T0).items[0];
+        const pre = M.preSubmitSteps(it);
+        assert(pre.length === it.steps.length - 1, 'все шаги, кроме этапа отбора');
+        assert(!pre.some(s => s.post));
+      });
+      test('Интервью (родитель): у каждой возможности указана стоимость с уровнем достоверности; «бесплатно» — только если подтверждено', () => {
+        M.OPPORTUNITIES.forEach(o => { assert(o.cost && o.cost.text && ['official', 'secondary'].includes(o.cost.conf), o.id); assert([true, false, null].includes(o.free), o.id); });
+        eq(m('izho', P({ onlyFree: true })).checks.find(c => c.kind === 'free').level, 'warn', 'неизвестная стоимость — предупреждение:');
+      });
+
+      // ---------- календарь ----------
+      test('Календарь: корректный iCalendar — CRLF, строки ≤ 75 байт, событие на каждый шаг, напоминание', () => {
+        const plan = M.buildPlan(P({ status: 'g11', ielts: 5.5 }), { nu: {}, uwc: {}, yygs: { deadline: 1 } }, T0);
+        const ics = M.toICS(plan, new Date(Date.UTC(2026, 8, 26, 10, 0, 0)));
+        assert(ics.startsWith('BEGIN:VCALENDAR\r\n') && ics.endsWith('END:VCALENDAR\r\n'));
+        const enc = new TextEncoder();
+        ics.split('\r\n').forEach(l => assert(enc.encode(l).length <= 75, 'длинная строка: ' + l));
+        eq((ics.match(/BEGIN:VEVENT/g) || []).length, plan.steps.length);
+        eq((ics.match(/BEGIN:VALARM/g) || []).length, plan.steps.length);
+        assert(/DTSTART;VALUE=DATE:20270105/.test(ics), 'дедлайн UWC');
+      });
+      test('Календарь: спецсимволы экранируются', () => {
+        const plan = M.buildPlan(base, { uwc: {} }, T0);
+        const ics = M.toICS(plan);
+        assert(!/SUMMARY:[^\r]*[^\\],/.test(ics.replace(/\r\n /g, '')), 'неэкранированная запятая');
+      });
+
+      return results;
+  };
+})();
