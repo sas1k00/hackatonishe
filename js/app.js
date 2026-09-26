@@ -1,15 +1,19 @@
 /*
  * Maqsat — интерфейс: профиль → возможности → план → календарь.
  * Данные хранятся только на устройстве (localStorage), без регистрации и сервера.
+ * Все тексты интерфейса проходят через t() — русский или казахский (js/i18n.js).
  */
 (function () {
   const M = window.M;
+  const t = M.t;
   const app = document.getElementById('app');
   const live = document.getElementById('live');
   const KEY = 'maqsat.v1';
 
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const announce = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 50); };
+  const announce = msg => { live.textContent = ''; setTimeout(() => { live.textContent = msg; }, 50); };
+  const short = d => M.fmtShort(d);
+  const ru = (n, a, b, c) => M.plural(n, a, b, c);
 
   /* «Сегодня» можно подменить параметром ?today=YYYY-MM-DD — для демо и тестов. */
   function today() {
@@ -22,9 +26,9 @@
   function load() {
     try {
       const s = JSON.parse(localStorage.getItem(KEY) || 'null');
-      if (s && typeof s === 'object') return { profile: s.profile || null, picks: s.picks || {}, done: s.done || {} };
+      if (s && typeof s === 'object') return { profile: s.profile || null, picks: s.picks || {}, done: s.done || {}, metrics: s.metrics || {} };
     } catch (e) { /* повреждённые данные или приватный режим */ }
-    return { profile: null, picks: {}, done: {} };
+    return { profile: null, picks: {}, done: {}, metrics: {} };
   }
   const state = load();
   function save() {
@@ -39,29 +43,36 @@
     b.hidden = !n; b.textContent = n;
   }
 
+  /* Юзабилити-замер: время от открытия профиля до первой цели в плане (для тестов с пользователями). */
+  function markStart() { if (!state.metrics.start) { state.metrics.start = Date.now(); save(); } }
+  function markFirstGoal() { if (state.metrics.start && !state.metrics.firstGoal) { state.metrics.firstGoal = Date.now(); save(); } }
+
   const COLORS = ['#2f3fbf', '#0c7a5c', '#b3312f', '#9a5200', '#5b48c9', '#0b6e99', '#8a3b8f', '#3d6b1f', '#b0475f', '#446078', '#7a5c00', '#1f7a7a', '#6b4e2e'];
   const colorOf = id => COLORS[M.OPPORTUNITIES.findIndex(o => o.id === id) % COLORS.length];
 
   const DEMO = { birthYear: 2010, birthMonth: 3, status: 'g10', kz: true, english: 2, ielts: null, avg: 4.6, city: 'almaty', interests: ['abroad', 'summer', 'olymp'], onlyFree: false };
 
+  /* Пометка для казахского интерфейса: описания программ пока на русском. */
+  const kkNote = () => (M.lang === 'kk' ? `<p class="small muted">${t('Описания программ пока на русском. В каждой карточке — ссылка на официальный источник.')}</p>` : '');
+
   /* ---------- Главная ---------- */
   function viewHome() {
     app.innerHTML = `
       <section class="hero">
-        <h1>От возможности — к результату</h1>
-        <p class="lead">Олимпиады, стипендии, летние и обменные программы, бесплатные IT-школы. Maqsat за минуту подберёт то, что подходит именно тебе, покажет, чего не хватает, и построит план назад от дедлайна — чтобы не узнать о конкурсе после закрытия регистрации.</p>
+        <h1>${t('От возможности — к результату')}</h1>
+        <p class="lead">${t('Олимпиады, стипендии, летние и обменные программы, бесплатные IT-школы. Maqsat за минуту подберёт то, что подходит именно тебе, покажет, чего не хватает, и построит план назад от дедлайна — чтобы не узнать о конкурсе после закрытия регистрации.')}</p>
         <div class="row">
-          <a class="btn primary" href="#profile">${state.profile ? 'Изменить профиль' : 'Заполнить профиль — 1 минута'}</a>
-          ${state.profile ? '<a class="btn" href="#matches">Мои возможности</a>' : '<button class="btn" id="demo">Посмотреть на примере</button>'}
+          <a class="btn primary" href="#profile">${state.profile ? t('Изменить профиль') : t('Заполнить профиль — 1 минута')}</a>
+          ${state.profile ? `<a class="btn" href="#matches">${t('Мои возможности')}</a>` : `<button class="btn" id="demo">${t('Посмотреть на примере')}</button>`}
         </div>
       </section>
-      <section class="pillars" aria-label="Как это работает">
-        <div class="pillar"><span class="num">1</span><b>Подбор с проверкой условий</b><p>Не просто список: для каждой возможности видно, подходишь ли ты по возрасту, классу, языку и баллу — и чего именно не хватает.</p></div>
-        <div class="pillar"><span class="num">2</span><b>План назад от дедлайна</b><p>Когда записываться на IELTS, когда просить рекомендации, когда сдавать эссе. Если два дедлайна наложились — предупредим.</p></div>
-        <div class="pillar"><span class="num">3</span><b>Напоминания в телефоне</b><p>Один файл — и все шаги с напоминаниями в Google/Apple Календаре. Отмечай выполненное и видь прогресс.</p></div>
+      <section class="pillars" aria-label="${t('Как это работает')}">
+        <div class="pillar"><span class="num">1</span><b>${t('Подбор с проверкой условий')}</b><p>${t('Не просто список: для каждой возможности видно, подходишь ли ты по возрасту, классу, языку и баллу — и чего именно не хватает.')}</p></div>
+        <div class="pillar"><span class="num">2</span><b>${t('План назад от дедлайна')}</b><p>${t('Когда записываться на IELTS, когда просить рекомендации, когда сдавать эссе. Если два дедлайна наложились — предупредим.')}</p></div>
+        <div class="pillar"><span class="num">3</span><b>${t('Напоминания в телефоне')}</b><p>${t('Один файл — и все шаги с напоминаниями в Google/Apple Календаре. Отмечай выполненное и видь прогресс.')}</p></div>
       </section>
       <section class="trust">
-        <b>Мы не выдумываем даты.</b> У каждой возможности — ссылка на первоисточник и дата проверки. Если организатор ещё не объявил срок нового цикла, мы пишем «ориентировочно» и показываем, на чём основана оценка. <a href="#data">Как мы проверяем данные →</a>
+        <b>${t('Мы не выдумываем даты.')}</b> ${t('У каждой возможности — ссылка на первоисточник и дата проверки. Если организатор ещё не объявил срок нового цикла, мы пишем «ориентировочно» и показываем, на чём основана оценка.')} <a href="#data">${t('Как мы проверяем данные →')}</a>
       </section>`;
     const d = app.querySelector('#demo');
     if (d) d.addEventListener('click', () => { state.profile = Object.assign({}, DEMO); save(); location.hash = '#matches'; });
@@ -69,36 +80,37 @@
 
   /* ---------- Профиль ---------- */
   function viewProfile() {
+    markStart();
     const p = state.profile || { birthYear: 2010, birthMonth: 1, status: 'g10', kz: true, english: 1, ielts: null, avg: null, city: 'other', interests: [], onlyFree: false };
     const years = []; for (let y = 2014; y >= 1996; y--) years.push(y);
     const months = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
     app.innerHTML = `
       <section class="card narrow">
-        <h1>Профиль</h1>
-        <p class="muted">Нужен только для подбора. Хранится на твоём устройстве — никуда не отправляется, регистрации нет.</p>
+        <h1>${t('Профиль')}</h1>
+        <p class="muted">${t('Нужен только для подбора. Хранится на твоём устройстве — никуда не отправляется, регистрации нет.')}</p>
         <form id="pf" novalidate>
           <div class="two">
-            <label class="field"><span>Месяц рождения</span><select name="birthMonth">${months.map((m, i) => `<option value="${i + 1}" ${p.birthMonth === i + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
-            <label class="field"><span>Год рождения</span><select name="birthYear">${years.map(y => `<option ${p.birthYear === y ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
+            <label class="field"><span>${t('Месяц рождения')}</span><select name="birthMonth">${months.map((m, i) => `<option value="${i + 1}" ${p.birthMonth === i + 1 ? 'selected' : ''}>${t(m)}</option>`).join('')}</select></label>
+            <label class="field"><span>${t('Год рождения')}</span><select name="birthYear">${years.map(y => `<option ${p.birthYear === y ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
           </div>
-          <label class="field"><span>Где учишься сейчас</span><select name="status">${M.STATUSES.map(s => `<option value="${s.id}" ${p.status === s.id ? 'selected' : ''}>${s.label}</option>`).join('')}</select></label>
+          <label class="field"><span>${t('Где учишься сейчас')}</span><select name="status">${M.STATUSES.map(s => `<option value="${s.id}" ${p.status === s.id ? 'selected' : ''}>${t(s.label)}</option>`).join('')}</select></label>
           <div class="two">
-            <label class="field"><span>Английский</span><select name="english">${M.ENGLISH.map(e => `<option value="${e.id}" ${p.english === e.id ? 'selected' : ''}>${e.label}</option>`).join('')}</select></label>
-            <label class="field"><span>IELTS <span class="hint">(если сдавал)</span></span><input type="number" name="ielts" min="1" max="9" step="0.5" inputmode="decimal" value="${p.ielts == null ? '' : p.ielts}" placeholder="например, 6.0"></label>
+            <label class="field"><span>${t('Английский')}</span><select name="english">${M.ENGLISH.map(e => `<option value="${e.id}" ${p.english === e.id ? 'selected' : ''}>${t(e.label)}</option>`).join('')}</select></label>
+            <label class="field"><span>IELTS <span class="hint">${t('(если сдавал)')}</span></span><input type="number" name="ielts" min="1" max="9" step="0.5" inputmode="decimal" value="${p.ielts == null ? '' : p.ielts}" placeholder="${t('например, 6.0')}"></label>
           </div>
           <div class="two">
-            <label class="field"><span>Средний балл <span class="hint">(из 5, необязательно)</span></span><input type="number" name="avg" min="2" max="5" step="0.1" inputmode="decimal" value="${p.avg == null ? '' : p.avg}" placeholder="например, 4.5"></label>
-            <label class="field"><span>Город</span><select name="city">${M.CITIES.map(c => `<option value="${c.id}" ${p.city === c.id ? 'selected' : ''}>${c.label}</option>`).join('')}</select></label>
+            <label class="field"><span>${t('Средний балл')} <span class="hint">${t('(из 5, необязательно)')}</span></span><input type="number" name="avg" min="2" max="5" step="0.1" inputmode="decimal" value="${p.avg == null ? '' : p.avg}" placeholder="${t('например, 4.5')}"></label>
+            <label class="field"><span>${t('Город')}</span><select name="city">${M.CITIES.map(c => `<option value="${c.id}" ${p.city === c.id ? 'selected' : ''}>${t(c.label)}</option>`).join('')}</select></label>
           </div>
-          <label class="switch"><input type="checkbox" name="school12" ${p.school12 ? 'checked' : ''}> В моей школе 12 классов (например, НИШ)</label>
-          <label class="switch"><input type="checkbox" name="kz" ${p.kz ? 'checked' : ''}> Гражданство или ВНЖ Казахстана</label>
+          <label class="switch"><input type="checkbox" name="school12" ${p.school12 ? 'checked' : ''}> ${t('В моей школе 12 классов (например, НИШ)')}</label>
+          <label class="switch"><input type="checkbox" name="kz" ${p.kz ? 'checked' : ''}> ${t('Гражданство или ВНЖ Казахстана')}</label>
           <fieldset>
-            <legend>Что тебе интересно <span class="hint">(можно несколько)</span></legend>
-            <div class="chips">${M.INTERESTS.map(i => `<label class="chip-check"><input type="checkbox" name="interests" value="${i.id}" ${(p.interests || []).includes(i.id) ? 'checked' : ''}><span>${i.label}</span></label>`).join('')}</div>
+            <legend>${t('Что тебе интересно')} <span class="hint">${t('(можно несколько)')}</span></legend>
+            <div class="chips">${M.INTERESTS.map(i => `<label class="chip-check"><input type="checkbox" name="interests" value="${i.id}" ${(p.interests || []).includes(i.id) ? 'checked' : ''}><span>${t(i.label)}</span></label>`).join('')}</div>
           </fieldset>
-          <label class="switch"><input type="checkbox" name="onlyFree" ${p.onlyFree ? 'checked' : ''}> Только бесплатные или с финансовой поддержкой</label>
+          <label class="switch"><input type="checkbox" name="onlyFree" ${p.onlyFree ? 'checked' : ''}> ${t('Только бесплатные или с финансовой поддержкой')}</label>
           <p id="err" class="small" role="alert" style="color:var(--bad)"></p>
-          <button class="btn primary" type="submit">Подобрать возможности</button>
+          <button class="btn primary" type="submit">${t('Подобрать возможности')}</button>
         </form>
       </section>`;
     app.querySelector('#pf').addEventListener('submit', e => {
@@ -108,8 +120,8 @@
       const ielts = num(f.get('ielts'), 1, 9);
       const avg = num(f.get('avg'), 2, 5);
       const err = app.querySelector('#err');
-      if (Number.isNaN(ielts)) { err.textContent = 'IELTS — число от 1 до 9, например 6.0'; return; }
-      if (Number.isNaN(avg)) { err.textContent = 'Средний балл — число от 2 до 5, например 4.5'; return; }
+      if (Number.isNaN(ielts)) { err.textContent = t('IELTS — число от 1 до 9, например 6.0'); return; }
+      if (Number.isNaN(avg)) { err.textContent = t('Средний балл — число от 2 до 5, например 4.5'); return; }
       state.profile = {
         birthYear: Number(f.get('birthYear')), birthMonth: Number(f.get('birthMonth')), status: f.get('status'),
         kz: !!f.get('kz'), school12: !!f.get('school12') || f.get('status') === 'g12', english: Number(f.get('english')), ielts, avg, city: f.get('city'),
@@ -121,7 +133,6 @@
   }
 
   /* ---------- Возможности ---------- */
-  const LABEL = { fit: 'Подходишь', almost: 'Почти', later: 'Позже', no: 'Не подходит' };
   let filter = 'all';
 
   function deadlineBlock(r) {
@@ -131,31 +142,25 @@
       const soon = r.daysLeft != null && r.daysLeft <= 21;
       return `<div class="dl ${soon ? 'soon' : ''}">
         <span>${esc(r.deadline.label)}:</span> <b>${M.fmt(d)}</b>
-        <span class="left">${r.daysLeft === 0 ? 'сегодня' : `через ${r.daysLeft} ${M.plural(r.daysLeft, 'день', 'дня', 'дней')}`}</span>
-        ${r.deadline.exact ? '' : `<span class="est" title="${esc(r.deadline.basis || '')}">ориентировочно</span><span class="tiny muted" style="flex-basis:100%">${esc(r.deadline.basis || '')}</span>`}
+        <span class="left">${r.daysLeft === 0 ? t('сегодня') : t('через {n} {what}', { n: r.daysLeft, what: ru(r.daysLeft, 'день', 'дня', 'дней') })}</span>
+        ${r.deadline.exact ? '' : `<span class="est" title="${esc(r.deadline.basis || '')}">${t('ориентировочно')}</span><span class="tiny muted" style="flex-basis:100%">${esc(r.deadline.basis || '')}</span>`}
       </div>`;
     }
-    if (o.rolling) return `<div class="dl"><b>Набор открыт</b><span class="tiny muted" style="flex-basis:100%">${esc(o.rolling)}</span></div>`;
-    return `<div class="dl none"><b>Срок не опубликован</b><span class="tiny muted" style="flex-basis:100%">${esc(o.unknownDeadline || '')}</span></div>`;
+    if (o.rolling) return `<div class="dl"><b>${t('Набор открыт')}</b><span class="tiny muted" style="flex-basis:100%">${esc(o.rolling)}</span></div>`;
+    return `<div class="dl none"><b>${t('Срок не опубликован')}</b><span class="tiny muted" style="flex-basis:100%">${esc(o.unknownDeadline || '')}</span></div>`;
   }
 
   function confTag(c) {
-    if (c === 'secondary') return '<span class="conf conf-secondary" title="По открытым источникам — уточните на официальном сайте">уточните</span>';
-    if (c === 'estimate') return '<span class="conf conf-estimate" title="Организатор не называет точный уровень — это наша оценка">наша оценка</span>';
+    if (c === 'secondary') return `<span class="conf conf-secondary" title="${t('По открытым источникам — уточните на официальном сайте')}">${t('уточните')}</span>`;
+    if (c === 'estimate') return `<span class="conf conf-estimate" title="${t('Организатор не называет точный уровень — это наша оценка')}">${t('наша оценка')}</span>`;
     return '';
   }
   const ICON = { ok: '✓', gap: '△', warn: '!', hard: '✗' };
+
   /* Сообщение об ошибке в карточке — через GitHub Issues. В ссылке только данные карточки, без профиля пользователя. */
   function reportUrl(o) {
     const title = `Ошибка в карточке: ${o.title}`;
-    const body = `Возможность: ${o.title} (${o.id})
-Источник в карточке: ${o.source.url}
-Проверено: ${M.VERIFIED}
-
-Что неверно:
-
-Ссылка, где указано правильно:
-`;
+    const body = `Возможность: ${o.title} (${o.id})\nИсточник в карточке: ${o.source.url}\nПроверено: ${M.VERIFIED}\n\nЧто неверно:\n\nСсылка, где указано правильно:\n`;
     return `${M.REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
   }
 
@@ -163,7 +168,9 @@
     const o = r.opp;
     const picked = !!state.picks[o.id];
     const gaps = r.checks.filter(c => c.level === 'gap').length;
-    const statusText = r.status === 'fit' ? '✓ Подходишь' : r.status === 'almost' ? `△ Почти: ${gaps} ${M.plural(gaps, 'пробел', 'пробела', 'пробелов')}` : r.status === 'later' ? `⏳ Станет доступно в ${r.laterYear}` : '✗ Не подходит';
+    const statusText = r.status === 'fit' ? t('✓ Подходишь')
+      : r.status === 'almost' ? t('△ Почти: {n} {what}', { n: gaps, what: ru(gaps, 'пробел', 'пробела', 'пробелов') })
+      : r.status === 'later' ? t('⏳ Станет доступно в {year}', { year: r.laterYear }) : t('✗ Не подходит');
     const canPick = r.status === 'fit' || r.status === 'almost';
     const canPlanLater = r.status === 'later' && r.laterShift && o.deadlines.length;
     const multi = o.deadlineChoice && o.deadlines.filter(d => M.date.parse(d.date) >= today()).length > 1;
@@ -173,53 +180,55 @@
         ${r.status === 'later' && o.laterCondition ? `<div class="small muted" style="margin:-4px 0 6px">— ${esc(o.laterCondition)}</div>` : ''}
         <h3 id="t-${o.id}">${esc(o.title)}</h3>
         <div class="org">${esc(o.org)}</div>
-        <div class="tags"><span class="tag">${esc(o.kind)}</span><span class="tag">${esc(o.place)}</span>${o.free === true ? '<span class="tag free">Бесплатно</span>' : ''}</div>
+        <div class="tags"><span class="tag">${esc(o.kind)}</span><span class="tag">${esc(o.place)}</span>${o.free === true ? `<span class="tag free">${t('Бесплатно')}</span>` : ''}</div>
       </div>
       <div class="opp-body">
         ${deadlineBlock(r)}
-        ${o.cost ? `<p class="cost"><b>Стоимость:</b> ${esc(o.cost.text)}${confTag(o.cost.conf)}</p>` : ''}
+        ${o.cost ? `<p class="cost"><b>${t('Стоимость:')}</b> ${esc(o.cost.text)}${confTag(o.cost.conf)}</p>` : ''}
         <ul class="checks">${r.checks.map(c => `<li class="lv-${c.level}"><span class="i" aria-hidden="true">${ICON[c.level]}</span><span>${esc(c.text)}${confTag(c.conf)}</span></li>`).join('')}</ul>
-        <details class="more"><summary>Подробнее и как проходит отбор</summary>
+        <details class="more"><summary>${t('Подробнее и как проходит отбор')}</summary>
           <p>${esc(o.summary)}</p>
-          ${o.aid ? `<p><b>Деньги:</b> ${esc(o.aid)}</p>` : ''}
-          <p><b>Отбор:</b> ${esc(o.selection)}</p>
+          ${o.aid ? `<p><b>${t('Деньги:')}</b> ${esc(o.aid)}</p>` : ''}
+          <p><b>${t('Отбор:')}</b> ${esc(o.selection)}</p>
           ${o.req && o.req.note ? `<p class="small muted">${esc(o.req.note.text)}${confTag(o.req.note.conf)}</p>` : ''}
         </details>
       </div>
       <div class="opp-foot">
-        <span class="src">Источник: <a href="${esc(o.source.url)}" target="_blank" rel="noopener">${esc(o.source.name)}</a> · проверено ${M.fmt(M.date.parse(M.VERIFIED))} · <a href="${esc(reportUrl(o))}" target="_blank" rel="noopener">Нашли ошибку?</a></span>
+        <span class="src">${t('Источник:')} <a href="${esc(o.source.url)}" target="_blank" rel="noopener">${esc(o.source.name)}</a> · ${t('проверено {date}', { date: M.fmt(M.date.parse(M.VERIFIED)) })} · <a href="${esc(reportUrl(o))}" target="_blank" rel="noopener">${t('Нашли ошибку?')}</a></span>
         ${canPick ? `<div class="row">
-          ${multi && !picked ? `<label class="sr-only" for="dl-${o.id}">Какой срок</label><select id="dl-${o.id}" class="small" style="width:auto;min-height:38px">${o.deadlines.map((d, i) => M.date.parse(d.date) >= today() ? `<option value="${i}">${esc(d.label)} — ${M.fmt(M.date.parse(d.date))}</option>` : '').join('')}</select>` : ''}
-          <button class="btn small ${picked ? '' : 'primary'}" data-pick="${o.id}" aria-pressed="${picked}">${picked ? '✓ В плане' : '+ В мой план'}</button>
+          ${multi && !picked ? `<label class="sr-only" for="dl-${o.id}">${t('Какой срок')}</label><select id="dl-${o.id}" class="small" style="width:auto;min-height:38px">${o.deadlines.map((d, i) => M.date.parse(d.date) >= today() ? `<option value="${i}">${esc(d.label)} — ${M.fmt(M.date.parse(d.date))}</option>` : '').join('')}</select>` : ''}
+          <button class="btn small ${picked ? '' : 'primary'}" data-pick="${o.id}" aria-pressed="${picked}">${picked ? t('✓ В плане') : t('+ В мой план')}</button>
         </div>` : ''}
-        ${canPlanLater ? `<button class="btn small ${picked ? '' : 'primary'}" data-pick="${o.id}" data-shift="${r.laterShift}" aria-pressed="${picked}">${picked ? `✓ Цель на ${r.laterYear}` : `+ Цель на ${r.laterYear}`}</button>` : ''}
+        ${canPlanLater ? `<button class="btn small ${picked ? '' : 'primary'}" data-pick="${o.id}" data-shift="${r.laterShift}" aria-pressed="${picked}">${picked ? t('✓ Цель на {year}', { year: r.laterYear }) : t('+ Цель на {year}', { year: r.laterYear })}</button>` : ''}
       </div>
     </article>`;
   }
 
   function viewMatches() {
     if (!state.profile) { location.hash = '#profile'; return; }
-    const t = today();
-    const res = M.matchAll(state.profile, t, state.picks);
+    const tdy = today();
+    const res = M.matchAll(state.profile, tdy, state.picks);
     const count = s => res.filter(r => r.status === s).length;
     const shown = res.filter(r => filter === 'all' ? r.status !== 'no' : r.status === filter);
     app.innerHTML = `
-      <h1>Возможности для тебя</h1>
-      <p class="muted">Проверили ${res.length} ${M.plural(res.length, 'возможность', 'возможности', 'возможностей')} по твоему профилю. <a href="#profile">Изменить профиль</a></p>
-      <div class="summary" role="group" aria-label="Фильтр">
-        ${[['all', `Все · ${res.length - count('no')}`], ['fit', `Подходишь · ${count('fit')}`], ['almost', `Почти · ${count('almost')}`], ['later', `Позже · ${count('later')}`], ['no', `Не подходит · ${count('no')}`]]
+      <h1>${t('Возможности для тебя')}</h1>
+      <p class="muted">${t('Проверили {n} {what} по твоему профилю.', { n: res.length, what: ru(res.length, 'возможность', 'возможности', 'возможностей') })} <a href="#profile">${t('Изменить профиль')}</a></p>
+      ${kkNote()}
+      <div class="summary" role="group" aria-label="${t('Фильтр')}">
+        ${[['all', t('Все · {n}', { n: res.length - count('no') })], ['fit', t('Подходишь · {n}', { n: count('fit') })], ['almost', t('Почти · {n}', { n: count('almost') })], ['later', t('Позже · {n}', { n: count('later') })], ['no', t('Не подходит · {n}', { n: count('no') })]]
           .map(([k, l]) => `<button class="filter" data-f="${k}" aria-pressed="${filter === k}">${l}</button>`).join('')}
       </div>
-      ${shown.length ? `<div class="opps">${shown.map(oppCard).join('')}</div>` : '<p class="card">В этой группе пусто.</p>'}`;
-    announce(`Найдено: подходишь — ${count('fit')}, почти — ${count('almost')}, позже — ${count('later')}`);
+      ${shown.length ? `<div class="opps">${shown.map(oppCard).join('')}</div>` : `<p class="card">${t('В этой группе пусто.')}</p>`}`;
+    announce(t('Найдено: подходишь — {a}, почти — {b}, позже — {c}', { a: count('fit'), b: count('almost'), c: count('later') }));
     app.querySelectorAll('[data-f]').forEach(b => b.addEventListener('click', () => { filter = b.dataset.f; viewMatches(); }));
     app.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () => {
       const id = b.dataset.pick;
-      if (state.picks[id]) { delete state.picks[id]; announce('Убрано из плана'); }
+      if (state.picks[id]) { delete state.picks[id]; announce(t('Убрано из плана')); }
       else {
         const sel = app.querySelector(`#dl-${id}`);
         state.picks[id] = b.dataset.shift ? { shift: Number(b.dataset.shift) } : { deadline: sel ? Number(sel.value) : null };
-        announce(`${M.OPP[id].title} добавлено в план`);
+        markFirstGoal();
+        announce(t('{title} добавлено в план', { title: M.OPP[id].title }));
       }
       save(); viewMatches();
       const again = app.querySelector(`[data-pick="${id}"]`); if (again) again.focus();
@@ -229,28 +238,27 @@
   /* ---------- План ---------- */
   function viewPlan() {
     if (!state.profile) { location.hash = '#profile'; return; }
-    const t = today();
+    const tdy = today();
     const ids = Object.keys(state.picks);
     if (!ids.length) {
-      app.innerHTML = `<section class="card narrow"><h1>Мой план</h1><p>Пока пусто. Добавь 1–3 возможности — и здесь появится пошаговый план с датами.</p><a class="btn primary" href="#matches">Выбрать возможности</a></section>`;
+      app.innerHTML = `<section class="card narrow"><h1>${t('Мой план')}</h1><p>${t('Пока пусто. Добавь 1–3 возможности — и здесь появится пошаговый план с датами.')}</p><a class="btn primary" href="#matches">${t('Выбрать возможности')}</a></section>`;
       return;
     }
-    const plan = M.buildPlan(state.profile, state.picks, t);
-    const next = M.nextAction(plan, state.done, t);
-    const overdue = s => !state.done[s.id] && s.date < t;
+    const plan = M.buildPlan(state.profile, state.picks, tdy);
+    const next = M.nextAction(plan, state.done, tdy);
+    const overdue = s => !state.done[s.id] && s.date < tdy;
 
-    // Группировка по неделям; просроченные — отдельно сверху
+    // Группировка: просроченные сверху, ближайшие 8 недель — по неделям, дальше — по месяцам
     const groups = [];
     const late = plan.steps.filter(overdue);
-    if (late.length) groups.push({ title: 'Просрочено', steps: late });
+    if (late.length) groups.push({ title: t('Просрочено'), steps: late });
     const rest = plan.steps.filter(s => !overdue(s));
-    const thisWeek = M.date.iso(M.weekStart(t));
-    const nextWeek = M.date.iso(M.date.addDays(M.weekStart(t), 7));
+    const thisWeek = M.date.iso(M.weekStart(tdy));
+    const nextWeek = M.date.iso(M.date.addDays(M.weekStart(tdy), 7));
     rest.forEach(s => {
-      const far = M.date.daysBetween(t, s.date) > 56;
+      const far = M.date.daysBetween(tdy, s.date) > 56;
       const k = far ? `m${s.date.getFullYear()}-${s.date.getMonth()}` : M.date.iso(M.weekStart(s.date));
-      const month = s.date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '');
-      const title = far ? month[0].toUpperCase() + month.slice(1) : k === thisWeek ? 'Эта неделя' : k === nextWeek ? 'Следующая неделя' : `Неделя с ${M.fmt(M.weekStart(s.date))}`;
+      const title = far ? M.fmtMonth(s.date) : k === thisWeek ? t('Эта неделя') : k === nextWeek ? t('Следующая неделя') : t('Неделя с {date}', { date: M.fmt(M.weekStart(s.date)) });
       const g = groups.find(x => x.key === k) || (groups.push({ key: k, title, steps: [] }), groups[groups.length - 1]);
       g.steps.push(s);
     });
@@ -260,89 +268,93 @@
       const d = state.done[s.id];
       return `<div class="step ${d ? 'done' : ''} ${overdue(s) ? 'overdue' : ''} ${s.deadline ? 'is-deadline' : ''}">
         <input type="checkbox" id="c-${esc(s.id)}" data-done="${esc(s.id)}" ${d ? 'checked' : ''}>
-        <label for="c-${esc(s.id)}"><span class="t">${esc(s.text)}</span>${s.school ? ' <span class="pill school">🏫 через школу</span>' : ''}${s.custom ? ' <span class="pill mine">ваша задача</span>' : ''}<br><span class="meta"><span class="dot" style="background:${colorOf(s.opp)}" aria-hidden="true"></span>${esc(o.title)}${s.moved ? ' · сжато под текущую дату' : ''}${s.manual ? ' · перенесено вами' : ''}${s.post ? ' · после подачи заявки' : ''}</span></label>
-        <span class="date">${s.date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}${s.custom ? `<br><button class="btn ghost small" data-delc="${esc(s.opp)}" data-cid="${esc(s.cid)}" aria-label="Удалить задачу ${esc(s.text)}">удалить</button>` : ''}</span>
+        <label for="c-${esc(s.id)}"><span class="t">${esc(s.text)}</span>${s.school ? ` <span class="pill school">${t('🏫 через школу')}</span>` : ''}${s.custom ? ` <span class="pill mine">${t('ваша задача')}</span>` : ''}<br><span class="meta"><span class="dot" style="background:${colorOf(s.opp)}" aria-hidden="true"></span>${esc(o.title)}${s.moved ? t(' · сжато под текущую дату') : ''}${s.manual ? t(' · перенесено вами') : ''}${s.post ? t(' · после подачи заявки') : ''}</span></label>
+        <span class="date">${short(s.date)}${s.custom ? `<br><button class="btn ghost small" data-delc="${esc(s.opp)}" data-cid="${esc(s.cid)}" aria-label="${esc(t('Удалить задачу {text}', { text: s.text }))}">${t('удалить')}</button>` : ''}</span>
       </div>`;
     };
 
+    const moreThisWeek = next ? plan.steps.filter(s => !state.done[s.id] && s.id !== next.id && M.date.iso(M.weekStart(s.date)) === thisWeek).length : 0;
     app.innerHTML = `
-      <h1>Мой план</h1>
+      <h1>${t('Мой план')}</h1>
       <div class="plan-top">
         <section class="today" aria-live="polite">
-          ${next ? `<div class="eyebrow">${next.date < t ? 'Просрочено — сделай сегодня' : M.date.daysBetween(t, next.date) === 0 ? 'Сделай сегодня' : 'Следующий шаг'}</div>
+          ${next ? `<div class="eyebrow">${next.date < tdy ? t('Просрочено — сделай сегодня') : M.date.daysBetween(tdy, next.date) === 0 ? t('Сделай сегодня') : t('Следующий шаг')}</div>
             <h2>${esc(next.text)}</h2>
-            <div>${esc(M.OPP[next.opp].title)} · ${M.fmt(next.date)}${next.school ? ' · 🏫 нужно обратиться в школу' : ''}</div>
-            <button class="btn" data-done="${esc(next.id)}" data-quick="1">Готово ✓</button>
-            ${(() => { const wk = plan.steps.filter(s => !state.done[s.id] && s.id !== next.id && M.date.iso(M.weekStart(s.date)) === thisWeek).length; return wk ? `<div class="more">Ещё ${wk} ${M.plural(wk, 'шаг', 'шага', 'шагов')} на этой неделе</div>` : ''; })()}` : '<div class="eyebrow">Все шаги выполнены</div><h2>План закрыт. Отличная работа!</h2>'}
+            <div>${esc(M.OPP[next.opp].title)} · ${M.fmt(next.date)}${next.school ? t(' · 🏫 нужно обратиться в школу') : ''}</div>
+            <button class="btn" data-done="${esc(next.id)}" data-quick="1">${t('Готово ✓')}</button>
+            ${moreThisWeek ? `<div class="more">${t('Ещё {n} {what} на этой неделе', { n: moreThisWeek, what: ru(moreThisWeek, 'шаг', 'шага', 'шагов') })}</div>` : ''}`
+          : `<div class="eyebrow">${t('Все шаги выполнены')}</div><h2>${t('План закрыт. Отличная работа!')}</h2>`}
         </section>
         <section class="card" style="margin:0">
-          <h2>Цели</h2>
+          <h2>${t('Цели')}</h2>
           <ul class="goals-list">${plan.items.map(it => {
             const pr = M.progress(it, state.done);
             const o = it.opp;
+            const pick = state.picks[o.id];
+            const dlText = it.deadline ? `${esc(it.deadline.label)}: ${M.fmt(M.date.parse(it.deadline.date))}${it.deadline.exact ? '' : it.deadline.future ? t(' (прогноз)') : t(' (ориентировочно)')}` : t('Срок не опубликован');
             return `<li>
-              <div class="goal-row"><b><span class="dot" style="background:${colorOf(o.id)}" aria-hidden="true"></span>${esc(o.title)}</b><button class="btn ghost small" data-remove="${o.id}" aria-label="Убрать ${esc(o.title)} из плана">Убрать</button></div>
-              ${it.future ? '<span class="pill mine">долгосрочная цель</span>' : ''}
-              <div class="small muted">${it.deadline ? `${esc(it.deadline.label)}: ${M.fmt(M.date.parse(it.deadline.date))}${it.deadline.exact ? '' : it.deadline.future ? ' (прогноз)' : ' (ориентировочно)'}` : 'Срок не опубликован'} · ${pr.d} из ${pr.n}</div>
-              <div class="bar" role="progressbar" aria-valuenow="${pr.pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Прогресс: ${esc(o.title)}"><i style="width:${pr.pct}%"></i></div>
+              <div class="goal-row"><b><span class="dot" style="background:${colorOf(o.id)}" aria-hidden="true"></span>${esc(o.title)}</b><button class="btn ghost small" data-remove="${o.id}" aria-label="${esc(t('Убрать {title} из плана', { title: o.title }))}">${t('Убрать')}</button></div>
+              ${it.future ? `<span class="pill mine">${t('долгосрочная цель')}</span>` : ''}
+              <div class="small muted">${dlText} · ${t('{d} из {n}', { d: pr.d, n: pr.n })}</div>
+              <div class="bar" role="progressbar" aria-valuenow="${pr.pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(t('Прогресс: {title}', { title: o.title }))}"><i style="width:${pr.pct}%"></i></div>
               <div class="row" style="margin-top:8px">
-                <button class="btn small" data-submitted="${o.id}" aria-pressed="${!!state.picks[o.id].submitted}">${state.picks[o.id].submitted ? `✓ Заявка отправлена ${M.date.parse(state.picks[o.id].submitted).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}` : 'Отметить: заявка отправлена'}</button>
+                <button class="btn small" data-submitted="${o.id}" aria-pressed="${!!pick.submitted}">${pick.submitted ? t('✓ Заявка отправлена {date}', { date: short(M.date.parse(pick.submitted)) }) : t('Отметить: заявка отправлена')}</button>
               </div>
-              <details class="add-task"><summary>+ Своя задача</summary>
+              <details class="add-task"><summary>${t('+ Своя задача')}</summary>
                 <form class="manual" data-addtask="${o.id}">
-                  <label class="small" for="tt-${o.id}">Что сделать</label><input id="tt-${o.id}" name="text" maxlength="120" required placeholder="например, спросить выпускника про собеседование">
-                  <label class="small" for="td-${o.id}">Когда</label><input id="td-${o.id}" name="date" type="date" required min="${M.date.iso(t)}">
-                  <button class="btn small primary" type="submit">Добавить</button>
+                  <label class="small" for="tt-${o.id}">${t('Что сделать')}</label><input id="tt-${o.id}" name="text" maxlength="120" required placeholder="${t('например, спросить выпускника про собеседование')}">
+                  <label class="small" for="td-${o.id}">${t('Когда')}</label><input id="td-${o.id}" name="date" type="date" required min="${M.date.iso(tdy)}">
+                  <button class="btn small primary" type="submit">${t('Добавить')}</button>
                 </form>
               </details>
-              ${!o.deadlines.length || !it.deadline || it.deadline.manual ? `<div class="manual"><label class="small" for="md-${o.id}">${it.deadline && it.deadline.manual ? 'Изменить дату' : 'Указать дедлайн, когда его объявят'}</label><input type="date" id="md-${o.id}" data-manual="${o.id}" value="${state.picks[o.id].manualDate || ''}" min="${M.date.iso(t)}"></div>` : ''}
+              ${!o.deadlines.length || !it.deadline || it.deadline.manual ? `<div class="manual"><label class="small" for="md-${o.id}">${it.deadline && it.deadline.manual ? t('Изменить дату') : t('Указать дедлайн, когда его объявят')}</label><input type="date" id="md-${o.id}" data-manual="${o.id}" value="${pick.manualDate || ''}" min="${M.date.iso(tdy)}"></div>` : ''}
             </li>`;
           }).join('')}</ul>
         </section>
       </div>
-      ${plan.warnings.length ? `<ul class="warns" aria-label="Предупреждения">${plan.warnings.map(w => `<li>${esc(w.text)}${w.alt != null ? ` <button class="btn small" data-alt="${w.opp}" data-idx="${w.alt}">Перейти на ${esc(M.OPP[w.opp].deadlines[w.alt].label)}</button>` : ''}</li>`).join('')}</ul>` : ''}
+      ${plan.warnings.length ? `<ul class="warns" aria-label="${t('Предупреждения')}">${plan.warnings.map(w => `<li>${esc(w.text)}${w.alt != null ? ` <button class="btn small" data-alt="${w.opp}" data-idx="${w.alt}">${esc(t('Перейти на {label}', { label: M.OPP[w.opp].deadlines[w.alt].label }))}</button>` : ''}</li>`).join('')}</ul>` : ''}
       <div class="row no-print" style="margin-bottom:18px">
-        <button class="btn primary" id="ics" ${plan.steps.length ? '' : 'disabled'}>📅 Добавить все шаги в календарь</button>
-        <button class="btn" id="print">🖨 Распечатать для родителей / учителя</button>
+        <button class="btn primary" id="ics" ${plan.steps.length ? '' : 'disabled'}>${t('📅 Добавить все шаги в календарь')}</button>
+        <button class="btn" id="print">${t('🖨 Распечатать для родителей / учителя')}</button>
       </div>
-      <p class="small muted">Сроки шагов — рекомендуемый запас до дедлайна, а не требования организаторов. Официальный дедлайн всегда сверяй по ссылке-источнику.</p>
+      <p class="small muted">${t('Сроки шагов — рекомендуемый запас до дедлайна, а не требования организаторов. Официальный дедлайн всегда сверяй по ссылке-источнику.')}</p>
       ${groups.map(g => `<section class="week"><h3>${esc(g.title)}</h3>${g.steps.map(stepRow).join('')}</section>`).join('')}`;
 
-    const toggle = id => { if (state.done[id]) delete state.done[id]; else state.done[id] = true; save(); viewPlan(); announce(state.done[id] ? 'Шаг выполнен' : 'Отметка снята'); };
+    const toggle = id => { if (state.done[id]) delete state.done[id]; else state.done[id] = true; save(); viewPlan(); announce(state.done[id] ? t('Шаг выполнен') : t('Отметка снята')); };
     app.querySelectorAll('input[data-done]').forEach(c => c.addEventListener('change', () => toggle(c.dataset.done)));
     app.querySelectorAll('button[data-quick]').forEach(b => b.addEventListener('click', () => toggle(b.dataset.done)));
     app.querySelectorAll('[data-alt]').forEach(b => b.addEventListener('click', () => {
       state.picks[b.dataset.alt].deadline = Number(b.dataset.idx); save(); viewPlan();
-      announce(`Срок изменён: ${M.OPP[b.dataset.alt].deadlines[Number(b.dataset.idx)].label}`);
+      announce(t('Срок изменён: {label}', { label: M.OPP[b.dataset.alt].deadlines[Number(b.dataset.idx)].label }));
     }));
     app.querySelectorAll('[data-submitted]').forEach(b => b.addEventListener('click', () => {
       const id = b.dataset.submitted;
       const pick = state.picks[id];
-      if (pick.submitted) { delete pick.submitted; announce('Отметка снята'); }
+      if (pick.submitted) { delete pick.submitted; announce(t('Отметка снята')); }
       else {
-        pick.submitted = M.date.iso(t);
+        pick.submitted = M.date.iso(tdy);
         // Подготовка до дедлайна больше не нужна — закрываем эти шаги; шаги после подачи (отбор) остаются
         const it = plan.items.find(x => x.opp.id === id);
         if (it) M.preSubmitSteps(it).forEach(s => { state.done[s.id] = true; });
-        announce('Заявка отмечена как отправленная');
+        announce(t('Заявка отмечена как отправленная'));
       }
       save(); viewPlan();
     }));
     app.querySelectorAll('[data-addtask]').forEach(f => f.addEventListener('submit', e => {
       e.preventDefault();
       const id = f.dataset.addtask;
-      const text = f.text.value.trim(); const date = f.date.value;
+      const text = f.elements.text.value.trim(); const date = f.elements.date.value;
       if (!text || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
       const pick = state.picks[id];
       pick.custom = (pick.custom || []).concat([{ id: String(Date.now()), text: text.slice(0, 120), date }]);
-      save(); viewPlan(); announce('Задача добавлена');
+      save(); viewPlan(); announce(t('Задача добавлена'));
     }));
     app.querySelectorAll('[data-delc]').forEach(b => b.addEventListener('click', () => {
       const pick = state.picks[b.dataset.delc];
       pick.custom = (pick.custom || []).filter(c => c.id !== b.dataset.cid);
-      save(); viewPlan(); announce('Задача удалена');
+      save(); viewPlan(); announce(t('Задача удалена'));
     }));
-    app.querySelectorAll('[data-remove]').forEach(b => b.addEventListener('click', () => { delete state.picks[b.dataset.remove]; save(); viewPlan(); announce('Убрано из плана'); }));
+    app.querySelectorAll('[data-remove]').forEach(b => b.addEventListener('click', () => { delete state.picks[b.dataset.remove]; save(); viewPlan(); announce(t('Убрано из плана')); }));
     app.querySelectorAll('[data-manual]').forEach(inp => inp.addEventListener('change', () => {
       const v = inp.value;
       if (/^\d{4}-\d{2}-\d{2}$/.test(v)) state.picks[inp.dataset.manual].manualDate = v; else delete state.picks[inp.dataset.manual].manualDate;
@@ -354,40 +366,65 @@
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = 'maqsat-plan.ics'; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-      announce('Файл календаря скачан. Открой его — шаги добавятся с напоминаниями.');
+      announce(t('Файл календаря скачан. Открой его — шаги добавятся с напоминаниями.'));
     });
     app.querySelector('#print').addEventListener('click', () => window.print());
   }
 
   /* ---------- Откуда данные ---------- */
   function viewData() {
+    const m = state.metrics;
+    const spent = m.start && m.firstGoal ? Math.round((m.firstGoal - m.start) / 1000) : null;
     app.innerHTML = `
       <section class="card">
-        <h1>Откуда данные</h1>
-        <p>Кейс финала требует: «не выдавайте предполагаемые результаты и синтетические данные за реальные». Поэтому в Maqsat три уровня достоверности, и они видны прямо в карточках:</p>
+        <h1>${t('Откуда данные')}</h1>
+        <p>${t('Кейс финала требует: «не выдавайте предполагаемые результаты и синтетические данные за реальные». Поэтому в Maqsat три уровня достоверности, и они видны прямо в карточках:')}</p>
         <ul>
-          <li><b>Без пометки</b> — сверено с официальным сайтом организатора ${M.fmt(M.date.parse(M.VERIFIED))}.</li>
-          <li><span class="conf conf-secondary">уточните</span> — по открытым источникам или СМИ; проверьте на официальном сайте перед подачей.</li>
-          <li><span class="conf conf-estimate">наша оценка</span> — организатор не называет конкретного значения (например, уровень английского), и это наш ориентир.</li>
-          <li><span class="est">ориентировочно</span> — дедлайн нового цикла ещё не объявлен; показываем дату по прошлому циклу и пишем, на чём она основана.</li>
+          <li><b>${t('Без пометки')}</b> ${t('— сверено с официальным сайтом организатора {date}.', { date: M.fmt(M.date.parse(M.VERIFIED)) })}</li>
+          <li><span class="conf conf-secondary">${t('уточните')}</span> ${t('— по открытым источникам или СМИ; проверьте на официальном сайте перед подачей.')}</li>
+          <li><span class="conf conf-estimate">${t('наша оценка')}</span> ${t('— организатор не называет конкретного значения (например, уровень английского), и это наш ориентир.')}</li>
+          <li><span class="est">${t('ориентировочно')}</span> ${t('— дедлайн нового цикла ещё не объявлен; показываем дату по прошлому циклу и пишем, на чём она основана.')}</li>
         </ul>
-        <p>Если срок не опубликован вовсе, мы не придумываем его: в плане можно указать дату самому, когда её объявят.</p>
+        <p>${t('Если срок не опубликован вовсе, мы не придумываем его: в плане можно указать дату самому, когда её объявят.')}</p>
+        ${kkNote()}
       </section>
       <section class="card">
-        <h2>Все возможности в базе (${M.OPPORTUNITIES.length})</h2>
+        <h2>${t('Все возможности в базе ({n})', { n: M.OPPORTUNITIES.length })}</h2>
         <div class="table-wrap"><table class="data">
-          <thead><tr><th>Возможность</th><th>Дедлайн</th><th>Источник</th></tr></thead>
+          <thead><tr><th>${t('Возможность')}</th><th>${t('Дедлайн')}</th><th>${t('Источник')}</th></tr></thead>
           <tbody>${M.OPPORTUNITIES.map(o => `<tr>
             <td><b>${esc(o.title)}</b><br><span class="small muted">${esc(o.kind)}</span></td>
-            <td>${o.deadlines.length ? o.deadlines.map(d => `${esc(d.label)}: ${M.fmt(M.date.parse(d.date))}${d.exact ? ' <span class="small" style="color:var(--ok)">официально</span>' : ` <span class="est">ориентировочно</span><br><span class="tiny muted">${esc(d.basis || '')}</span>`}`).join('<br>') : esc(o.rolling || o.unknownDeadline || 'не опубликован')}</td>
+            <td>${o.deadlines.length ? o.deadlines.map(d => `${esc(d.label)}: ${M.fmt(M.date.parse(d.date))}${d.exact ? ` <span class="small" style="color:var(--ok)">${t('официально')}</span>` : ` <span class="est">${t('ориентировочно')}</span><br><span class="tiny muted">${esc(d.basis || '')}</span>`}`).join('<br>') : esc(o.rolling || o.unknownDeadline || t('не опубликован'))}</td>
             <td><a href="${esc(o.source.url)}" target="_blank" rel="noopener">${esc(o.source.name)}</a></td>
           </tr>`).join('')}</tbody>
         </table></div>
+      </section>
+      <section class="card no-print">
+        <h2>Юзабилити-тест</h2>
+        <p class="small muted">Для проверки с пользователями: время от открытия профиля до первой цели в плане. Замер хранится только на этом устройстве.</p>
+        <p><b>${spent == null ? 'Замера пока нет' : `${Math.floor(spent / 60)} мин ${spent % 60} с`}</b></p>
+        <button class="btn small" id="newtest">Начать новый тест (очистить профиль и план)</button>
       </section>`;
+    app.querySelector('#newtest').addEventListener('click', () => {
+      state.profile = null; state.picks = {}; state.done = {}; state.metrics = {}; save();
+      location.hash = '#home';
+    });
   }
+
+  /* ---------- Язык ---------- */
+  function applyStatic() {
+    document.documentElement.lang = M.lang === 'kk' ? 'kk' : 'ru';
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-label]').forEach(el => { el.setAttribute('aria-label', t(el.dataset.i18nLabel)); });
+    const b = document.getElementById('lang');
+    b.textContent = M.lang === 'kk' ? 'Русский' : 'Қазақша';
+    b.setAttribute('lang', M.lang === 'kk' ? 'ru' : 'kk');
+  }
+  document.getElementById('lang').addEventListener('click', () => { M.setLang(M.lang === 'kk' ? 'ru' : 'kk'); route(); });
 
   /* ---------- Роутер ---------- */
   function route() {
+    applyStatic();
     const view = (location.hash.replace('#', '') || 'home').split('/')[0];
     document.querySelectorAll('[data-nav]').forEach(a => {
       const on = a.dataset.nav === view;

@@ -5,6 +5,9 @@
 (function () {
   const M = window.M;
   M.runTests = function () {
+    // Тексты в тестах — русские; язык, выбранный пользователем в браузере, не должен на них влиять
+    const savedLang = M.lang;
+    M.lang = 'ru';
       const T0 = M.date.parse('2026-09-26');
       const results = [];
       function test(name, fn) {
@@ -230,6 +233,29 @@
         assert(!/SUMMARY:[^\r]*[^\\],/.test(ics.replace(/\r\n /g, '')), 'неэкранированная запятая');
       });
 
-      return results;
+      // ---------- казахский интерфейс ----------
+    test('Қазақша: у всех шагов плана и пунктов профиля есть перевод', () => {
+      const miss = [];
+      Object.values(M.STEP_TEMPLATES).forEach(list => list.forEach(s => { if (!M.KK[s.t]) miss.push(s.t); }));
+      [M.STATUSES, M.ENGLISH, M.INTERESTS, M.CITIES].forEach(list => list.forEach(x => { if (!M.KK[x.label]) miss.push(x.label); }));
+      eq(miss, []);
+    });
+    test('Қазақша: подбор и план для разных профилей не оставляют непереведённых фраз движка', () => {
+      const prev = M.lang;
+      M.lang = 'kk'; M.missing.clear();
+      try {
+        const profiles = [base, P({ status: 'g11', ielts: 5.5, avg: 3.8, onlyFree: true, city: 'other' }), P({ status: 'g11', school12: true, ielts: 7 }), P({ kz: false, birthYear: 2000, status: 'grad' })];
+        profiles.forEach(p => {
+          M.matchAll(p, T0, {});
+          M.buildPlan(p, { uwc: {}, yygs: { deadline: 0 }, rknp: {}, flex: {}, nu: { shift: 1 }, hungaricum: {}, rise: {} }, T0);
+        });
+        eq([...M.missing], []);
+        assert(/сынып|жас|IELTS/.test(M.match(base, M.OPP.uwc, T0).checks.map(c => c.text).join(' ')), 'проверки должны быть на казахском');
+        eq(M.fmtLong(M.date.parse('2027-01-05')), '5 қаңтар 2027 ж.');
+        eq(M.fmtMonth(M.date.parse('2027-09-01')), 'Қыркүйек 2027');
+      } finally { M.lang = prev; }
+    });
+    M.lang = savedLang;
+    return results;
   };
 })();

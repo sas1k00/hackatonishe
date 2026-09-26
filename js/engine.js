@@ -7,6 +7,7 @@
 (function () {
   const M = window.M;
   const DAY = 86400000;
+  const t = (k, v) => (M.t ? M.t(k, v) : k.replace(/\{(\w+)\}/g, (m, x) => (v && v[x] != null ? v[x] : m)));
 
   /* ---------- даты (все даты — локальные, без времени) ---------- */
   function parse(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); }
@@ -40,9 +41,9 @@
     if (r.schoolRel) {
       const fin = finalGrade(profile, st);
       const grades = r.schoolRel.map(k => fin - k).sort((a, b) => a - b);
-      parts.push(grades.length > 1 ? `${grades[0]}–${grades[grades.length - 1]} класс` : `${grades[0]} класс (выпускной)`);
+      parts.push(grades.length > 1 ? t('{a}–{b} класс', { a: grades[0], b: grades[grades.length - 1] }) : t('{a} класс (выпускной)', { a: grades[0] }));
     }
-    (r.status || []).forEach(x => parts.push(STATUS[x].label));
+    (r.status || []).forEach(x => parts.push(t(STATUS[x].label)));
     return parts.join(', ');
   }
   M.OPP = Object.fromEntries(M.OPPORTUNITIES.map(o => [o.id, o]));
@@ -61,13 +62,13 @@
 
   /* Целевой дедлайн: выбранный пользователем, иначе ближайший, который ещё не прошёл. */
   function targetDeadline(opp, today, pick) {
-    if (pick && pick.manualDate) return { label: 'Дата, указанная вами', date: pick.manualDate, exact: true, manual: true };
+    if (pick && pick.manualDate) return { label: t('Дата, указанная вами'), date: pick.manualDate, exact: true, manual: true };
     if (pick && pick.shift && opp.deadlines.length) {
       // Долгосрочная цель: тот же срок через pick.shift лет — это прогноз, а не опубликованная дата
       const base = opp.deadlines[0];
       const d = addYears(parse(base.date), pick.shift);
-      return { label: `${base.label} (цикл ${d.getFullYear()})`, date: iso(d), exact: false, future: true, shift: pick.shift,
-        basis: `прогноз: срок текущего цикла, сдвинутый на ${pick.shift} ${plural(pick.shift, 'год', 'года', 'лет')}` };
+      return { label: t('{label} (цикл {year})', { label: base.label, year: d.getFullYear() }), date: iso(d), exact: false, future: true, shift: pick.shift,
+        basis: t('прогноз: срок текущего цикла, сдвинутый на {n} {what}', { n: pick.shift, what: plural(pick.shift, 'год', 'года', 'лет') }) };
     }
     const future = opp.deadlines.filter(d => parse(d.date) >= parse(iso(today)));
     if (opp.deadlineChoice && pick && pick.deadline != null && opp.deadlines[pick.deadline] && future.includes(opp.deadlines[pick.deadline])) return opp.deadlines[pick.deadline];
@@ -88,33 +89,34 @@
       const a = ageAt(profile, at);
       const okMin = r.age.min == null || a >= r.age.min;
       const okMax = r.age.max == null || a <= r.age.max;
-      const range = r.age.min != null && r.age.max != null ? `${r.age.min}–${r.age.max} лет` : r.age.min != null ? `от ${r.age.min} лет` : `до ${r.age.max} лет`;
-      push('age', okMin && okMax ? 'ok' : 'hard', `Возраст ${range}: вам будет ${a} ${plural(a, 'год', 'года', 'лет')}${r.age.at ? ` на ${fmt(at)}` : ''}`);
+      const range = r.age.min != null && r.age.max != null ? t('{min}–{max} лет', r.age) : r.age.min != null ? t('от {min} лет', r.age) : t('до {max} лет', r.age);
+      push('age', okMin && okMax ? 'ok' : 'hard', t('Возраст {range}: вам будет {a} {what}', { range, a, what: plural(a, 'год', 'года', 'лет') }) + (r.age.at ? t(' на {date}', { date: fmt(at) }) : ''));
     }
     if (r.status || r.schoolRel) {
       const ok = statusAllowed(r, profile, statusId);
-      push('status', ok ? 'ok' : 'hard', ok ? `Статус подходит: ${STATUS[statusId].label}` : `Нужно: ${allowedText(r, profile, statusId)} — у вас ${STATUS[statusId].label}`);
+      push('status', ok ? 'ok' : 'hard', ok ? t('Статус подходит: {s}', { s: t(STATUS[statusId].label) }) : t('Нужно: {allowed} — у вас {s}', { allowed: allowedText(r, profile, statusId), s: t(STATUS[statusId].label) }));
     }
     if (r.gate) push('gate', 'warn', r.gate);
-    if (r.kz) push('kz', profile.kz ? 'ok' : 'hard', profile.kz ? 'Гражданство или ВНЖ Казахстана' : 'Нужно гражданство или ВНЖ Казахстана');
+    if (r.kz) push('kz', profile.kz ? 'ok' : 'hard', profile.kz ? t('Гражданство или ВНЖ Казахстана') : t('Нужно гражданство или ВНЖ Казахстана'));
     if (r.english) {
       const need = r.english;
       const have = profile.ielts ? Math.max(profile.english, ieltsToCefr(profile.ielts)) : profile.english;
       if (need.ielts) {
-        if (profile.ielts && profile.ielts >= need.ielts) push('english', 'ok', `IELTS ${profile.ielts} — не ниже требуемых ${need.ielts.toFixed(1)}`);
-        else if (profile.ielts) push('english', 'gap', `Нужен IELTS ${need.ielts.toFixed(1)}, у вас ${profile.ielts} — нужна пересдача`);
-        else push('english', 'gap', `Нужен сертификат IELTS ${need.ielts.toFixed(1)}${have >= need.cefr ? ' — уровень у вас, похоже, есть, осталось сдать экзамен' : ` и уровень примерно ${M.ENGLISH[need.cefr].label.split(' ')[0]}`}`);
+        const needS = need.ielts.toFixed(1);
+        if (profile.ielts && profile.ielts >= need.ielts) push('english', 'ok', t('IELTS {have} — не ниже требуемых {need}', { have: profile.ielts, need: needS }));
+        else if (profile.ielts) push('english', 'gap', t('Нужен IELTS {need}, у вас {have} — нужна пересдача', { have: profile.ielts, need: needS }));
+        else push('english', 'gap', t('Нужен сертификат IELTS {need}', { need: needS }) + (have >= need.cefr ? t(' — уровень у вас, похоже, есть, осталось сдать экзамен') : t(' и уровень примерно {level}', { level: M.ENGLISH[need.cefr].label.split(' ')[0] })));
       } else {
-        push('english', have >= need.cefr ? 'ok' : 'gap', have >= need.cefr ? `Английский: достаточно (${M.ENGLISH[have].label})` : `Английский: нужен уровень около ${M.ENGLISH[need.cefr].label}, у вас ${M.ENGLISH[have].label}`);
+        push('english', have >= need.cefr ? 'ok' : 'gap', have >= need.cefr ? t('Английский: достаточно ({level})', { level: t(M.ENGLISH[have].label) }) : t('Английский: нужен уровень около {need}, у вас {have}', { need: t(M.ENGLISH[need.cefr].label), have: t(M.ENGLISH[have].label) }));
       }
     }
     if (r.avg) {
-      if (profile.avg == null) push('avg', 'gap', `Нужен средний балл не ниже ${r.avg} из 5 — укажите свой в профиле`);
-      else push('avg', profile.avg >= r.avg ? 'ok' : 'gap', `Средний балл ${r.avg}+: у вас ${profile.avg}`);
+      if (profile.avg == null) push('avg', 'gap', t('Нужен средний балл не ниже {avg} из 5 — укажите свой в профиле', { avg: r.avg }));
+      else push('avg', profile.avg >= r.avg ? 'ok' : 'gap', t('Средний балл {avg}+: у вас {have}', { avg: r.avg, have: profile.avg }));
     }
     if (r.city) {
       const ok = r.city.includes(profile.city);
-      push('city', ok ? 'ok' : 'warn', ok ? `Очно в вашем городе` : `Занятия очно: ${r.city.map(c => M.CITIES.find(x => x.id === c).label).join(', ')} — придётся ездить или переехать`);
+      push('city', ok ? 'ok' : 'warn', ok ? t('Очно в вашем городе') : t('Занятия очно: {cities} — придётся ездить или переехать', { cities: r.city.map(c => t(M.CITIES.find(x => x.id === c).label)).join(', ') }));
     }
     return checks;
   }
@@ -126,7 +128,7 @@
     return many;
   }
   M.plural = plural;
-  function fmt(d) { return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }); }
+  function fmt(d) { return M.fmtLong ? M.fmtLong(d) : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }); }
   M.fmt = fmt;
 
   /*
@@ -139,8 +141,8 @@
     const onDate = dl ? parse(dl.date) : today;
     const checks = checkReqs(profile, opp, onDate, profile.status);
     if (profile.onlyFree && opp.free !== true) {
-      if (opp.free === null) checks.push({ kind: 'free', level: 'warn', text: 'Стоимость участия не указана — уточните', conf: 'secondary' });
-      else checks.push({ kind: 'free', level: opp.aid ? 'warn' : 'gap', text: opp.aid ? `Платно, но: ${opp.aid}` : 'Платная программа', conf: 'official' });
+      if (opp.free === null) checks.push({ kind: 'free', level: 'warn', text: t('Стоимость участия не указана — уточните'), conf: 'secondary' });
+      else checks.push({ kind: 'free', level: opp.aid ? 'warn' : 'gap', text: opp.aid ? t('Платно, но: {aid}', { aid: opp.aid }) : t('Платная программа'), conf: 'official' });
     }
     const hard = checks.filter(c => c.level === 'hard');
     const gaps = checks.filter(c => c.level === 'gap');
@@ -204,7 +206,7 @@
         // asap — навык, который выгоднее начать сразу, а не «ровно за N недель»
         const ideal = addDays(end, -7 * t.w);
         const date = t.asap && parse(iso(today)) < ideal ? parse(iso(today)) : ideal;
-        steps.push({ id: `${opp.id}:${key}:${i}`, opp: opp.id, text: t.t, date, weeks: t.w, deadline: !!t.deadline, school: !!t.school, post: t.w < 0 });
+        steps.push({ id: `${opp.id}:${key}:${i}`, opp: opp.id, text: M.t ? M.t(t.t) : t.t, date, weeks: t.w, deadline: !!t.deadline, school: !!t.school, post: t.w < 0 });
       });
     });
     // У конкурсов и олимпиад нет шага «отправить заявку» — сам этап становится финальной точкой плана
@@ -236,21 +238,21 @@
     all.forEach(s => { const k = weekKey(s.date); (weeks[k] = weeks[k] || []).push(s); });
     const warnings = [];
     Object.entries(weeks).forEach(([k, list]) => {
-      if (list.length >= 4) warnings.push({ type: 'busy', week: k, text: `Неделя с ${fmt(weekStart(list[0].date))}: ${list.length} ${plural(list.length, 'дело', 'дела', 'дел')} — начните часть заранее`, steps: list.map(s => s.id) });
+      if (list.length >= 4) warnings.push({ type: 'busy', week: k, text: t('Неделя с {date}: {n} {what} — начните часть заранее', { date: fmt(weekStart(list[0].date)), n: list.length, what: plural(list.length, 'дело', 'дела', 'дел') }), steps: list.map(s => s.id) });
     });
     const dls = all.filter(s => s.deadline);
     for (let i = 1; i < dls.length; i++) {
       if (daysBetween(dls[i - 1].date, dls[i].date) <= 7) {
-        warnings.push({ type: 'clash', text: `Два дедлайна за одну неделю: ${M.OPP[dls[i - 1].opp].title} (${fmt(dls[i - 1].date)}) и ${M.OPP[dls[i].opp].title} (${fmt(dls[i].date)})`, steps: [dls[i - 1].id, dls[i].id] });
+        warnings.push({ type: 'clash', text: t('Два дедлайна за одну неделю: {a} ({da}) и {b} ({db})', { a: M.OPP[dls[i - 1].opp].title, da: fmt(dls[i - 1].date), b: M.OPP[dls[i].opp].title, db: fmt(dls[i].date) }), steps: [dls[i - 1].id, dls[i].id] });
       }
     }
     items.forEach(it => {
       if (it.compressed) {
         const later = it.opp.deadlineChoice && it.deadline && !it.deadline.manual && it.opp.deadlines.find(d => parse(d.date) > parse(it.deadline.date));
         warnings.push({ type: 'late', opp: it.opp.id, alt: later ? it.opp.deadlines.indexOf(later) : null,
-          text: `${it.opp.title}: рекомендуемый график уже начался — первые шаги сжаты до ближайших дней.` + (later ? ` Есть более поздний срок: ${later.label} — ${fmt(parse(later.date))}` : '') });
+          text: t('{title}: рекомендуемый график уже начался — первые шаги сжаты до ближайших дней.', { title: it.opp.title }) + (later ? t(' Есть более поздний срок: {label} — {date}', { label: later.label, date: fmt(parse(later.date)) }) : '') });
       }
-      if (!it.deadline) warnings.push({ type: 'nodate', text: `${it.opp.title}: срок не опубликован — укажите дату, когда её объявят.`, opp: it.opp.id });
+      if (!it.deadline) warnings.push({ type: 'nodate', text: t('{title}: срок не опубликован — укажите дату, когда её объявят.', { title: it.opp.title }), opp: it.opp.id });
     });
     return { items, steps: all, warnings };
   };

@@ -4,7 +4,7 @@ const path = require('path');
 const vm = require('vm');
 
 globalThis.window = globalThis;
-for (const f of ['js/data.js', 'js/engine.js', 'js/tests.js']) {
+for (const f of ['js/i18n.js', 'js/data.js', 'js/engine.js', 'js/tests.js']) {
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), { filename: f });
 }
 const results = globalThis.M.runTests();
