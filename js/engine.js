@@ -17,7 +17,34 @@
   M.date = { parse, iso, addDays, addYears, daysBetween };
 
   const STATUS = Object.fromEntries(M.STATUSES.map(s => [s.id, s]));
-  const NEXT_STATUS = { g8: 'g9', g9: 'g10', g10: 'g11', g11: 'grad', g12: 'grad', col1: 'col2', col2: 'col2', uni: 'uni', grad: 'grad' };
+  /*
+   * Переход в следующий учебный год. В 12-летней школе после 11 класса идёт 12-й.
+   * После школы считаем, что ученик поступает в вуз: это типичный путь, и прогноз «станет доступно»
+   * для вузовских программ дополнительно оговаривается условием (opp.laterCondition).
+   */
+  function nextStatus(st, profile) {
+    if (st === 'g11') return profile.school12 ? 'g12' : 'uni';
+    return { g8: 'g9', g9: 'g10', g10: 'g11', g12: 'uni', col1: 'col2', col2: 'col2', uni: 'uni', grad: 'grad' }[st];
+  }
+  M.nextStatus = nextStatus;
+  const finalGrade = (profile, st) => (profile.school12 || st === 'g12' ? 12 : 11);
+
+  /* Подходит ли статус: классы школы — относительно выпускного, остальное — по списку. */
+  function statusAllowed(r, profile, st) {
+    const s = STATUS[st];
+    if (s.school && r.schoolRel) return r.schoolRel.includes(finalGrade(profile, st) - s.school);
+    return (r.status || []).includes(st);
+  }
+  function allowedText(r, profile, st) {
+    const parts = [];
+    if (r.schoolRel) {
+      const fin = finalGrade(profile, st);
+      const grades = r.schoolRel.map(k => fin - k).sort((a, b) => a - b);
+      parts.push(grades.length > 1 ? `${grades[0]}–${grades[grades.length - 1]} класс` : `${grades[0]} класс (выпускной)`);
+    }
+    (r.status || []).forEach(x => parts.push(STATUS[x].label));
+    return parts.join(', ');
+  }
   M.OPP = Object.fromEntries(M.OPPORTUNITIES.map(o => [o.id, o]));
 
   /* Возраст в полных годах на дату. Дата рождения известна до месяца — считаем от 1-го числа. */
@@ -57,10 +84,11 @@
       const range = r.age.min != null && r.age.max != null ? `${r.age.min}–${r.age.max} лет` : r.age.min != null ? `от ${r.age.min} лет` : `до ${r.age.max} лет`;
       push('age', okMin && okMax ? 'ok' : 'hard', `Возраст ${range}: вам будет ${a} ${plural(a, 'год', 'года', 'лет')}${r.age.at ? ` на ${fmt(at)}` : ''}`);
     }
-    if (r.status) {
-      const ok = r.status.includes(statusId);
-      push('status', ok ? 'ok' : 'hard', ok ? `Статус подходит: ${STATUS[statusId].label}` : `Статус «${STATUS[statusId].label}» не входит в условия: ${r.status.map(s => STATUS[s].label).join(', ')}`);
+    if (r.status || r.schoolRel) {
+      const ok = statusAllowed(r, profile, statusId);
+      push('status', ok ? 'ok' : 'hard', ok ? `Статус подходит: ${STATUS[statusId].label}` : `Нужно: ${allowedText(r, profile, statusId)} — у вас ${STATUS[statusId].label}`);
     }
+    if (r.gate) push('gate', 'warn', r.gate);
     if (r.kz) push('kz', profile.kz ? 'ok' : 'hard', profile.kz ? 'Гражданство или ВНЖ Казахстана' : 'Нужно гражданство или ВНЖ Казахстана');
     if (r.english) {
       const need = r.english;
@@ -113,7 +141,7 @@
       // Прогноз: пересчитать профиль на 1–3 учебных года вперёд
       let st = profile.status;
       for (let k = 1; k <= 3; k++) {
-        st = NEXT_STATUS[st];
+        st = nextStatus(st, profile);
         const future = addYears(onDate, k);
         const shifted = Object.assign({}, opp, { req: Object.assign({}, opp.req, opp.req.age && opp.req.age.at ? { age: Object.assign({}, opp.req.age, { at: iso(addYears(parse(opp.req.age.at), k)) }) } : {}) });
         const fc = checkReqs(profile, shifted, future, st);

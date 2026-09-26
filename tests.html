@@ -84,6 +84,35 @@
       eq(r.status, 'fit');
       eq(r.checks.find(c => c.kind === 'city').level, 'warn');
     });
+    test('12-летняя школа (НИШ): 11 класс — «два последних класса» для UWC и не выпускной для NU', () => {
+      const nis = P({ status: 'g11', school12: true, birthYear: 2010 });
+      eq(m('uwc', nis).checks.find(c => c.kind === 'status').level, 'ok');
+      eq(m('nu', nis).status, 'later');
+      eq(m('nu', nis).laterYear, 2028);
+    });
+    test('Обычная школа: 11 класс — выпускной; для YYGS («не выпускной») не подходит', () => {
+      eq(m('yygs', P({ status: 'g11' })).checks.find(c => c.kind === 'status').level, 'hard');
+      eq(m('yygs', P({ status: 'g11', school12: true })).checks.find(c => c.kind === 'status').level, 'ok');
+    });
+    test('Прогноз: после 11 класса обычной школы — вуз, а в НИШ — 12 класс', () => {
+      eq(M.nextStatus('g11', P()), 'uni');
+      eq(M.nextStatus('g11', P({ school12: true })), 'g12');
+    });
+    test('ML School для школьника: «позже» с оговоркой про направление', () => {
+      const r = m('mlschool');
+      eq(r.status, 'later');
+      assert(/IT-, математическое или техническое/.test(M.OPP.mlschool.laterCondition));
+    });
+    test('IZhO: формально подходит, но есть предупреждение про отбор в команду школы', () => {
+      const r = m('izho');
+      eq(r.status, 'fit');
+      eq(r.checks.find(c => c.kind === 'gate').level, 'warn');
+    });
+    test('UWC: в плане есть шаг после дедлайна — подготовка к финальному этапу отбора', () => {
+      const st = M.buildPlan(base, { uwc: {} }, T0).items[0].steps;
+      const post = st.filter(s => s.date > M.date.parse('2027-01-05'));
+      eq(post.length, 1); eq(M.date.iso(post[0].date), '2027-02-02');
+    });
     test('Samsung: 26 лет — не подходит (13–25)', () => eq(m('samsung', P({ birthYear: 2000, status: 'grad' })).status, 'no'));
     test('«Только бесплатные»: платная программа без поддержки — пробел, с финансовой помощью — предупреждение', () => {
       eq(m('yygs', P({ onlyFree: true })).checks.find(c => c.kind === 'free').level, 'warn');
@@ -98,12 +127,13 @@
     });
 
     // ---------- план ----------
-    test('План: шаги идут до дедлайна, последний шаг — сам дедлайн', () => {
+    test('План: подготовка идёт до дедлайна, сам дедлайн — отдельный шаг', () => {
       const plan = M.buildPlan(base, { uwc: {} }, T0);
       const st = plan.items[0].steps;
       assert(st.length >= 4);
-      eq(M.date.iso(st[st.length - 1].date), '2027-01-05');
-      assert(st[st.length - 1].deadline);
+      const dl = st.filter(s => s.deadline);
+      eq(dl.length, 1); eq(M.date.iso(dl[0].date), '2027-01-05');
+      st.filter(s => !s.deadline && !s.id.includes(':interview')).forEach(s => assert(s.date <= dl[0].date, s.text));
     });
     test('План: если до дедлайна мало времени, шаги сжимаются и ни один не уходит в прошлое', () => {
       const plan = M.buildPlan(base, { yygs: { deadline: 0 } }, T0);

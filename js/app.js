@@ -90,6 +90,7 @@
             <label class="field"><span>Средний балл <span class="hint">(из 5, необязательно)</span></span><input type="number" name="avg" min="2" max="5" step="0.1" inputmode="decimal" value="${p.avg == null ? '' : p.avg}" placeholder="например, 4.5"></label>
             <label class="field"><span>Город</span><select name="city">${M.CITIES.map(c => `<option value="${c.id}" ${p.city === c.id ? 'selected' : ''}>${c.label}</option>`).join('')}</select></label>
           </div>
+          <label class="switch"><input type="checkbox" name="school12" ${p.school12 ? 'checked' : ''}> В моей школе 12 классов (например, НИШ)</label>
           <label class="switch"><input type="checkbox" name="kz" ${p.kz ? 'checked' : ''}> Гражданство или ВНЖ Казахстана</label>
           <fieldset>
             <legend>Что тебе интересно <span class="hint">(можно несколько)</span></legend>
@@ -111,7 +112,7 @@
       if (Number.isNaN(avg)) { err.textContent = 'Средний балл — число от 2 до 5, например 4.5'; return; }
       state.profile = {
         birthYear: Number(f.get('birthYear')), birthMonth: Number(f.get('birthMonth')), status: f.get('status'),
-        kz: !!f.get('kz'), english: Number(f.get('english')), ielts, avg, city: f.get('city'),
+        kz: !!f.get('kz'), school12: !!f.get('school12') || f.get('status') === 'g12', english: Number(f.get('english')), ielts, avg, city: f.get('city'),
         interests: f.getAll('interests'), onlyFree: !!f.get('onlyFree')
       };
       save();
@@ -155,6 +156,7 @@
     return `<article class="opp" aria-labelledby="t-${o.id}">
       <div class="opp-head">
         <span class="status st-${r.status}">${statusText}</span>
+        ${r.status === 'later' && o.laterCondition ? `<div class="small muted" style="margin:-4px 0 6px">— ${esc(o.laterCondition)}</div>` : ''}
         <h3 id="t-${o.id}">${esc(o.title)}</h3>
         <div class="org">${esc(o.org)}</div>
         <div class="tags"><span class="tag">${esc(o.kind)}</span><span class="tag">${esc(o.place)}</span>${o.free ? '<span class="tag free">Бесплатно</span>' : ''}</div>
