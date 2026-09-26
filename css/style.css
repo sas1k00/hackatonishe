@@ -92,6 +92,11 @@ form .field { display: grid; gap: 6px; margin-bottom: 16px; }
 select, input[type="number"] { font: inherit; padding: 11px 12px; min-height: 46px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface-2); color: var(--ink); width: 100%; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 fieldset { border: 0; padding: 0; margin: 0 0 16px; }
+.choice { margin-top: 8px; gap: 8px; }
+.choice label { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 14px; border: 1.5px solid var(--line); border-radius: 10px; cursor: pointer; font-weight: 600; }
+.choice label:has(input:checked) { border-color: var(--accent); background: var(--surface-2); }
+.choice input { width: 20px; height: 20px; accent-color: var(--accent); margin: 0; }
+textarea { font: inherit; padding: 11px 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface-2); color: var(--ink); width: 100%; resize: vertical; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .chip-check { position: relative; }
 .chip-check input { position: absolute; opacity: 0; width: 1px; height: 1px; }

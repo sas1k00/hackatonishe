@@ -45,7 +45,11 @@
 
   /* Юзабилити-замер: время от открытия профиля до первой цели в плане (для тестов с пользователями). */
   function markStart() { if (!state.metrics.start) { state.metrics.start = Date.now(); save(); } }
-  function markFirstGoal() { if (state.metrics.start && !state.metrics.firstGoal) { state.metrics.firstGoal = Date.now(); save(); } }
+  function markFirstGoal() {
+    if (!state.metrics.start || state.metrics.firstGoal) return false;
+    state.metrics.firstGoal = Date.now(); save(); return true;
+  }
+  const mmss = sec => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 
   const COLORS = ['#2f3fbf', '#0c7a5c', '#b3312f', '#9a5200', '#5b48c9', '#0b6e99', '#8a3b8f', '#3d6b1f', '#b0475f', '#446078', '#7a5c00', '#1f7a7a', '#6b4e2e'];
   const colorOf = id => COLORS[M.OPPORTUNITIES.findIndex(o => o.id === id) % COLORS.length];
@@ -227,7 +231,8 @@
       else {
         const sel = app.querySelector(`#dl-${id}`);
         state.picks[id] = b.dataset.shift ? { shift: Number(b.dataset.shift) } : { deadline: sel ? Number(sel.value) : null };
-        markFirstGoal();
+        state.metrics.goal = state.metrics.goal || id;
+        if (markFirstGoal() && state.metrics.test) { save(); location.hash = '#test-done'; return; }
         announce(t('{title} добавлено в план', { title: M.OPP[id].title }));
       }
       save(); viewMatches();
@@ -400,15 +405,98 @@
         </table></div>
       </section>
       <section class="card no-print">
-        <h2>Юзабилити-тест</h2>
-        <p class="small muted">Для проверки с пользователями: время от открытия профиля до первой цели в плане. Замер хранится только на этом устройстве.</p>
-        <p><b>${spent == null ? 'Замера пока нет' : `${Math.floor(spent / 60)} мин ${spent % 60} с`}</b></p>
-        <button class="btn small" id="newtest">Начать новый тест (очистить профиль и план)</button>
+        <h2>${t('Юзабилити-тест')}</h2>
+        <p class="small muted">${t('Для проверки с пользователями: время от открытия профиля до первой цели в плане. Замер хранится только на этом устройстве.')}</p>
+        <p><b>${spent == null ? t('Замера пока нет') : t('{m} мин {s} с', { m: Math.floor(spent / 60), s: spent % 60 })}</b></p>
+        <button class="btn small" id="newtest">${t('Начать новый тест (очистить профиль и план)')}</button>
+        <p class="small">${t('Тест на расстоянии: отправьте ученику ссылку ниже. Приложение само засечёт время, задаст 3 вопроса и предложит отправить результат вам.')}</p>
+        <p class="small"><code>${esc(location.origin + location.pathname)}#test</code></p>
       </section>`;
     app.querySelector('#newtest').addEventListener('click', () => {
       state.profile = null; state.picks = {}; state.done = {}; state.metrics = {}; save();
       location.hash = '#home';
     });
+  }
+
+  /* ---------- Юзабилити-тест на расстоянии ----------
+   * Ссылка …#test: ученик получает задание, приложение засекает время до первой цели в плане,
+   * задаёт 3 вопроса и предлагает отправить результат организатору теста (Telegram, WhatsApp или копия текста).
+   * Ничего не уходит на сервер — ученик сам решает, отправлять ли. */
+  function viewTest() {
+    app.innerHTML = `
+      <section class="card narrow">
+        <h1>${t('Тест приложения · 3–5 минут')}</h1>
+        <p>${t('Мы проверяем приложение, а не тебя. Неправильных действий нет — если что-то непонятно, это наша ошибка, а не твоя.')}</p>
+        <div class="trust"><b>${t('Задание')}:</b> ${t('найди программу, на которую ты можешь подать, и добавь её в план.')}</div>
+        <p class="small muted">${t('Время пойдёт после нажатия кнопки. Заполняй профиль честно — он остаётся только на твоём телефоне.')}</p>
+        <button class="btn primary" id="go">${t('Начать тест')}</button>
+      </section>`;
+    app.querySelector('#go').addEventListener('click', () => {
+      state.profile = null; state.picks = {}; state.done = {};
+      state.metrics = { test: true, id: 'T' + Math.random().toString(36).slice(2, 6).toUpperCase(), screens: 0 };
+      save(); location.hash = '#profile';
+    });
+  }
+
+  function testReport(m, f) {
+    const status = state.profile ? M.STATUSES.find(s => s.id === state.profile.status) : null;
+    return [
+      'Maqsat · юзабилити-тест ' + m.id,
+      'Время до первой цели: ' + mmss(Math.round((m.firstGoal - m.start) / 1000)),
+      'Экранов пройдено: ' + (m.screens || 0),
+      'Класс: ' + (status ? status.label : '—'),
+      'Добавил(а) в план: ' + (m.goal && M.OPP[m.goal] ? M.OPP[m.goal].title : '—'),
+      'Насколько легко (1–5): ' + (f.ease || '—'),
+      'Что было непонятно: ' + (f.unclear || '—'),
+      'Воспользовался(ась) бы: ' + (f.use || '—'),
+      'Язык: ' + (M.lang === 'kk' ? 'қазақша' : 'русский') + ' · ' + (matchMedia('(max-width: 700px)').matches ? 'телефон' : 'компьютер'),
+      'Дата: ' + M.date.iso(new Date())
+    ].join('\n');
+  }
+
+  function viewTestDone() {
+    const m = state.metrics;
+    if (!m.test || !m.firstGoal) { location.hash = '#test'; return; }
+    const sec = Math.round((m.firstGoal - m.start) / 1000);
+    const f = m.feedback || {};
+    app.innerHTML = `
+      <section class="card narrow">
+        <h1>${t('Готово! Спасибо')}</h1>
+        <p>${t('Твоё время: {t}', { t: '' })}<b>${mmss(sec)}</b></p>
+        <form id="fb">
+          <fieldset class="field"><legend>${t('Насколько было легко? (1 — очень сложно, 5 — очень легко)')}</legend>
+            <div class="row choice">${[1, 2, 3, 4, 5].map(n => `<label><input type="radio" name="ease" value="${n}" ${f.ease == n ? 'checked' : ''}> ${n}</label>`).join('')}</div>
+          </fieldset>
+          <label class="field"><span>${t('Что было непонятно или неудобно?')}</span><textarea name="unclear" rows="3">${esc(f.unclear || '')}</textarea></label>
+          <fieldset class="field"><legend>${t('Воспользовался(ась) бы ты этим сам(а)?')}</legend>
+            <div class="row choice">${[['да', t('да')], ['возможно', t('возможно')], ['нет', t('нет')]].map(([v, l]) => `<label><input type="radio" name="use" value="${v}" ${f.use === v ? 'checked' : ''}> ${l}</label>`).join('')}</div>
+          </fieldset>
+          <p class="small muted">${t('Результат не уходит никуда автоматически — отправь его тому, кто дал тебе ссылку.')}</p>
+          <div class="row">
+            <button class="btn primary" type="button" data-send="share">${t('Отправить результат')}</button>
+            <button class="btn" type="button" data-send="tg">Telegram</button>
+            <button class="btn" type="button" data-send="wa">WhatsApp</button>
+            <button class="btn" type="button" data-send="copy">${t('Скопировать')}</button>
+          </div>
+        </form>
+        <p class="small"><a href="#plan">${t('Посмотреть свой план →')}</a></p>
+      </section>`;
+    const form = app.querySelector('#fb');
+    const read = () => {
+      const e = form.elements;
+      m.feedback = { ease: e.ease.value, unclear: e.unclear.value.trim().slice(0, 500), use: e.use.value };
+      save(); return testReport(m, m.feedback);
+    };
+    form.addEventListener('change', read);
+    app.querySelectorAll('[data-send]').forEach(b => b.addEventListener('click', () => {
+      const text = read(), how = b.dataset.send;
+      const copy = () => (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject())
+        .then(() => announce(t('Скопировано — вставь в чат'))).catch(() => { window.prompt(t('Скопируй текст:'), text); });
+      if (how === 'share' && navigator.share) navigator.share({ text }).catch(() => {});
+      else if (how === 'tg') window.open('https://t.me/share/url?url=' + encodeURIComponent(location.origin + location.pathname) + '&text=' + encodeURIComponent(text), '_blank', 'noopener');
+      else if (how === 'wa') window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
+      else copy();
+    }));
   }
 
   /* ---------- Язык ---------- */
@@ -431,10 +519,13 @@
       a.classList.toggle('active', on);
       if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
+    if (state.metrics.test && !state.metrics.firstGoal && view !== 'test') { state.metrics.screens = (state.metrics.screens || 0) + 1; save(); }
     if (view === 'profile') viewProfile();
     else if (view === 'matches') viewMatches();
     else if (view === 'plan') viewPlan();
     else if (view === 'data') viewData();
+    else if (view === 'test') viewTest();
+    else if (view === 'test-done') viewTestDone();
     else if (view === 'demo') { state.profile = Object.assign({}, DEMO); save(); location.hash = '#matches'; return; }
     else if (view === 'demo-plan') {
       // Запасной вариант для живой демонстрации: готовый профиль и план
