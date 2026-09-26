@@ -12,6 +12,7 @@
 window.M = window.M || {};
 
 M.VERIFIED = '2026-09-26';
+M.REPO = 'https://github.com/sas1k00/hackatonishe';
 
 /* Статус обучения. order — чтобы «переводить» профиль в следующий учебный год. */
 M.STATUSES = [

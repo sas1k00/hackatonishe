@@ -145,6 +145,19 @@
     return '';
   }
   const ICON = { ok: '✓', gap: '△', warn: '!', hard: '✗' };
+  /* Сообщение об ошибке в карточке — через GitHub Issues. В ссылке только данные карточки, без профиля пользователя. */
+  function reportUrl(o) {
+    const title = `Ошибка в карточке: ${o.title}`;
+    const body = `Возможность: ${o.title} (${o.id})
+Источник в карточке: ${o.source.url}
+Проверено: ${M.VERIFIED}
+
+Что неверно:
+
+Ссылка, где указано правильно:
+`;
+    return `${M.REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+  }
 
   function oppCard(r) {
     const o = r.opp;
@@ -173,7 +186,7 @@
         </details>
       </div>
       <div class="opp-foot">
-        <span class="src">Источник: <a href="${esc(o.source.url)}" target="_blank" rel="noopener">${esc(o.source.name)}</a> · проверено ${M.fmt(M.date.parse(M.VERIFIED))}</span>
+        <span class="src">Источник: <a href="${esc(o.source.url)}" target="_blank" rel="noopener">${esc(o.source.name)}</a> · проверено ${M.fmt(M.date.parse(M.VERIFIED))} · <a href="${esc(reportUrl(o))}" target="_blank" rel="noopener">Нашли ошибку?</a></span>
         ${canPick ? `<div class="row">
           ${multi && !picked ? `<label class="sr-only" for="dl-${o.id}">Какой срок</label><select id="dl-${o.id}" class="small" style="width:auto;min-height:38px">${o.deadlines.map((d, i) => M.date.parse(d.date) >= today() ? `<option value="${i}">${esc(d.label)} — ${M.fmt(M.date.parse(d.date))}</option>` : '').join('')}</select>` : ''}
           <button class="btn small ${picked ? '' : 'primary'}" data-pick="${o.id}" aria-pressed="${picked}">${picked ? '✓ В плане' : '+ В мой план'}</button>

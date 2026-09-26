@@ -438,7 +438,7 @@ for i, (h_, b) in enumerate(metrics):
 road = 'Казахский язык · база 100+ возможностей с проверкой модератором · еженедельная автопроверка источников · Telegram-напоминания · режим для профориентатора'
 text(s, 0.8, 4.6, 11.8, 0.8, [[('Дорожная карта: ', {'color': BLUE}), (road, {'color': INK})]], size=14)
 text(s, 0.8, 5.85, 8.6, 0.4, 'Команда: Bolatbay Yersultan · Zharkynuly Eren · Kydyrkhan Olzhas', size=16, color=INK)
-text(s, 0.8, 6.3, 8.6, 0.35, 'GitHub: [ссылка]   ·   Демо: [ссылка]', size=13, color=GRAY)
+text(s, 0.8, 6.3, 8.6, 0.35, 'GitHub: github.com/sas1k00/hackatonishe   ·   Демо: sas1k00.github.io/hackatonishe', size=13, color=GRAY)
 button(s, 10.15, 5.95, 2.5, 'Спасибо!')
 
 prs.save(OUT)
