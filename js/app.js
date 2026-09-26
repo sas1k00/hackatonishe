@@ -519,7 +519,6 @@
       a.classList.toggle('active', on);
       if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
-    if (state.metrics.test && !state.metrics.firstGoal && view !== 'test') { state.metrics.screens = (state.metrics.screens || 0) + 1; save(); }
     if (view === 'profile') viewProfile();
     else if (view === 'matches') viewMatches();
     else if (view === 'plan') viewPlan();
@@ -538,6 +537,11 @@
     const h = app.querySelector('h1'); if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
     updateBadge();
   }
-  window.addEventListener('hashchange', route);
+  window.addEventListener('hashchange', () => {
+    // Юзабилити-тест: считаем переходы между экранами до первой цели (минимум 2: профиль → возможности)
+    const m = state.metrics;
+    if (m.test && !m.firstGoal && !/^#test/.test(location.hash)) { m.screens = (m.screens || 0) + 1; save(); }
+    route();
+  });
   document.addEventListener('DOMContentLoaded', route);
 })();
