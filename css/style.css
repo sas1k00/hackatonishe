@@ -169,6 +169,11 @@ details.more p { font-size: .92rem; }
 .step .date { font-weight: 800; font-size: .9rem; white-space: nowrap; text-align: right; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
 .manual { display: grid; gap: 6px; margin-top: 8px; }
+.pill { display: inline-block; font-size: .75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; vertical-align: 1px; }
+.pill.school { background: var(--gold-soft); color: var(--gold); }
+.pill.mine { background: var(--accent-soft); color: var(--accent); }
+.cost { font-size: .92rem; margin: 0 0 8px; }
+details.add-task summary { cursor: pointer; font-weight: 700; color: var(--accent); padding: 8px 0 0; min-height: 36px; }
 .manual input { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--surface-2); color: var(--ink); min-height: 42px; }
 
 /* Данные */

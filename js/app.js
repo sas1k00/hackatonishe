@@ -159,10 +159,11 @@
         ${r.status === 'later' && o.laterCondition ? `<div class="small muted" style="margin:-4px 0 6px">— ${esc(o.laterCondition)}</div>` : ''}
         <h3 id="t-${o.id}">${esc(o.title)}</h3>
         <div class="org">${esc(o.org)}</div>
-        <div class="tags"><span class="tag">${esc(o.kind)}</span><span class="tag">${esc(o.place)}</span>${o.free ? '<span class="tag free">Бесплатно</span>' : ''}</div>
+        <div class="tags"><span class="tag">${esc(o.kind)}</span><span class="tag">${esc(o.place)}</span>${o.free === true ? '<span class="tag free">Бесплатно</span>' : ''}</div>
       </div>
       <div class="opp-body">
         ${deadlineBlock(r)}
+        ${o.cost ? `<p class="cost"><b>Стоимость:</b> ${esc(o.cost.text)}${confTag(o.cost.conf)}</p>` : ''}
         <ul class="checks">${r.checks.map(c => `<li class="lv-${c.level}"><span class="i" aria-hidden="true">${ICON[c.level]}</span><span>${esc(c.text)}${confTag(c.conf)}</span></li>`).join('')}</ul>
         <details class="more"><summary>Подробнее и как проходит отбор</summary>
           <p>${esc(o.summary)}</p>
@@ -242,8 +243,8 @@
       const d = state.done[s.id];
       return `<div class="step ${d ? 'done' : ''} ${overdue(s) ? 'overdue' : ''} ${s.deadline ? 'is-deadline' : ''}">
         <input type="checkbox" id="c-${esc(s.id)}" data-done="${esc(s.id)}" ${d ? 'checked' : ''}>
-        <label for="c-${esc(s.id)}"><span class="t">${esc(s.text)}</span><br><span class="meta"><span class="dot" style="background:${colorOf(s.opp)}" aria-hidden="true"></span>${esc(o.title)}${s.moved ? ' · сжато под текущую дату' : ''}${s.manual ? ' · перенесено вами' : ''}</span></label>
-        <span class="date">${s.date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</span>
+        <label for="c-${esc(s.id)}"><span class="t">${esc(s.text)}</span>${s.school ? ' <span class="pill school">🏫 через школу</span>' : ''}${s.custom ? ' <span class="pill mine">ваша задача</span>' : ''}<br><span class="meta"><span class="dot" style="background:${colorOf(s.opp)}" aria-hidden="true"></span>${esc(o.title)}${s.moved ? ' · сжато под текущую дату' : ''}${s.manual ? ' · перенесено вами' : ''}${s.post ? ' · после подачи заявки' : ''}</span></label>
+        <span class="date">${s.date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}${s.custom ? `<br><button class="btn ghost small" data-delc="${esc(s.opp)}" data-cid="${esc(s.cid)}" aria-label="Удалить задачу ${esc(s.text)}">удалить</button>` : ''}</span>
       </div>`;
     };
 
@@ -253,7 +254,7 @@
         <section class="today" aria-live="polite">
           ${next ? `<div class="eyebrow">${next.date < t ? 'Просрочено — сделай сегодня' : M.date.daysBetween(t, next.date) === 0 ? 'Сделай сегодня' : 'Следующий шаг'}</div>
             <h2>${esc(next.text)}</h2>
-            <div>${esc(M.OPP[next.opp].title)} · ${M.fmt(next.date)}</div>
+            <div>${esc(M.OPP[next.opp].title)} · ${M.fmt(next.date)}${next.school ? ' · 🏫 нужно обратиться в школу' : ''}</div>
             <button class="btn" data-done="${esc(next.id)}" data-quick="1">Готово ✓</button>
             ${(() => { const wk = plan.steps.filter(s => !state.done[s.id] && s.id !== next.id && M.date.iso(M.weekStart(s.date)) === thisWeek).length; return wk ? `<div class="more">Ещё ${wk} ${M.plural(wk, 'шаг', 'шага', 'шагов')} на этой неделе</div>` : ''; })()}` : '<div class="eyebrow">Все шаги выполнены</div><h2>План закрыт. Отличная работа!</h2>'}
         </section>
@@ -266,6 +267,16 @@
               <div class="goal-row"><b><span class="dot" style="background:${colorOf(o.id)}" aria-hidden="true"></span>${esc(o.title)}</b><button class="btn ghost small" data-remove="${o.id}" aria-label="Убрать ${esc(o.title)} из плана">Убрать</button></div>
               <div class="small muted">${it.deadline ? `${esc(it.deadline.label)}: ${M.fmt(M.date.parse(it.deadline.date))}${it.deadline.exact ? '' : ' (ориентировочно)'}` : 'Срок не опубликован'} · ${pr.d} из ${pr.n}</div>
               <div class="bar" role="progressbar" aria-valuenow="${pr.pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Прогресс: ${esc(o.title)}"><i style="width:${pr.pct}%"></i></div>
+              <div class="row" style="margin-top:8px">
+                <button class="btn small" data-submitted="${o.id}" aria-pressed="${!!state.picks[o.id].submitted}">${state.picks[o.id].submitted ? `✓ Заявка отправлена ${M.date.parse(state.picks[o.id].submitted).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}` : 'Отметить: заявка отправлена'}</button>
+              </div>
+              <details class="add-task"><summary>+ Своя задача</summary>
+                <form class="manual" data-addtask="${o.id}">
+                  <label class="small" for="tt-${o.id}">Что сделать</label><input id="tt-${o.id}" name="text" maxlength="120" required placeholder="например, спросить выпускника про собеседование">
+                  <label class="small" for="td-${o.id}">Когда</label><input id="td-${o.id}" name="date" type="date" required min="${M.date.iso(t)}">
+                  <button class="btn small primary" type="submit">Добавить</button>
+                </form>
+              </details>
               ${!o.deadlines.length || !it.deadline || it.deadline.manual ? `<div class="manual"><label class="small" for="md-${o.id}">${it.deadline && it.deadline.manual ? 'Изменить дату' : 'Указать дедлайн, когда его объявят'}</label><input type="date" id="md-${o.id}" data-manual="${o.id}" value="${state.picks[o.id].manualDate || ''}" min="${M.date.iso(t)}"></div>` : ''}
             </li>`;
           }).join('')}</ul>
@@ -285,6 +296,33 @@
     app.querySelectorAll('[data-alt]').forEach(b => b.addEventListener('click', () => {
       state.picks[b.dataset.alt].deadline = Number(b.dataset.idx); save(); viewPlan();
       announce(`Срок изменён: ${M.OPP[b.dataset.alt].deadlines[Number(b.dataset.idx)].label}`);
+    }));
+    app.querySelectorAll('[data-submitted]').forEach(b => b.addEventListener('click', () => {
+      const id = b.dataset.submitted;
+      const pick = state.picks[id];
+      if (pick.submitted) { delete pick.submitted; announce('Отметка снята'); }
+      else {
+        pick.submitted = M.date.iso(t);
+        // Подготовка до дедлайна больше не нужна — закрываем эти шаги; шаги после подачи (отбор) остаются
+        const it = plan.items.find(x => x.opp.id === id);
+        if (it) M.preSubmitSteps(it).forEach(s => { state.done[s.id] = true; });
+        announce('Заявка отмечена как отправленная');
+      }
+      save(); viewPlan();
+    }));
+    app.querySelectorAll('[data-addtask]').forEach(f => f.addEventListener('submit', e => {
+      e.preventDefault();
+      const id = f.dataset.addtask;
+      const text = f.text.value.trim(); const date = f.date.value;
+      if (!text || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      const pick = state.picks[id];
+      pick.custom = (pick.custom || []).concat([{ id: String(Date.now()), text: text.slice(0, 120), date }]);
+      save(); viewPlan(); announce('Задача добавлена');
+    }));
+    app.querySelectorAll('[data-delc]').forEach(b => b.addEventListener('click', () => {
+      const pick = state.picks[b.dataset.delc];
+      pick.custom = (pick.custom || []).filter(c => c.id !== b.dataset.cid);
+      save(); viewPlan(); announce('Задача удалена');
     }));
     app.querySelectorAll('[data-remove]').forEach(b => b.addEventListener('click', () => { delete state.picks[b.dataset.remove]; save(); viewPlan(); announce('Убрано из плана'); }));
     app.querySelectorAll('[data-manual]').forEach(inp => inp.addEventListener('change', () => {

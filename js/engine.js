@@ -130,8 +130,9 @@
     const dl = targetDeadline(opp, today, pick);
     const onDate = dl ? parse(dl.date) : today;
     const checks = checkReqs(profile, opp, onDate, profile.status);
-    if (profile.onlyFree && !opp.free) {
-      checks.push({ kind: 'free', level: opp.aid ? 'warn' : 'gap', text: opp.aid ? `Платно, но: ${opp.aid}` : 'Платная программа', conf: 'official' });
+    if (profile.onlyFree && opp.free !== true) {
+      if (opp.free === null) checks.push({ kind: 'free', level: 'warn', text: 'Стоимость участия не указана — уточните', conf: 'secondary' });
+      else checks.push({ kind: 'free', level: opp.aid ? 'warn' : 'gap', text: opp.aid ? `Платно, но: ${opp.aid}` : 'Платная программа', conf: 'official' });
     }
     const hard = checks.filter(c => c.level === 'hard');
     const gaps = checks.filter(c => c.level === 'gap');
@@ -179,12 +180,15 @@
    */
   function planFor(profile, opp, today, pick) {
     const dl = targetDeadline(opp, today, pick);
-    if (!dl) return { opp, deadline: null, steps: [], compressed: false };
+    // Свои задачи пользователя (например, «спросить у выпускника про собеседование») — есть даже без дедлайна
+    const custom = ((pick && pick.custom) || []).filter(c => c && c.text && /^\d{4}-\d{2}-\d{2}$/.test(c.date))
+      .map(c => ({ id: `${opp.id}:custom:${c.id}`, opp: opp.id, text: c.text, date: parse(c.date), weeks: null, custom: true, cid: c.id }));
+    if (!dl) return { opp, deadline: null, steps: custom.sort((a, b) => a.date - b.date), compressed: false };
     const end = parse(dl.date);
     const steps = [];
     stepKeys(profile, opp, today).forEach(key => {
       M.STEP_TEMPLATES[key].forEach((t, i) => {
-        steps.push({ id: `${opp.id}:${key}:${i}`, opp: opp.id, text: t.t, date: addDays(end, -7 * t.w), weeks: t.w, deadline: !!t.deadline });
+        steps.push({ id: `${opp.id}:${key}:${i}`, opp: opp.id, text: t.t, date: addDays(end, -7 * t.w), weeks: t.w, deadline: !!t.deadline, school: !!t.school, post: t.w < 0 });
       });
     });
     // У конкурсов и олимпиад нет шага «отправить заявку» — сам этап становится финальной точкой плана
@@ -203,6 +207,7 @@
     steps.forEach(s => {
       if (pick && pick.moved && pick.moved[s.id]) { s.date = parse(pick.moved[s.id]); s.manual = true; }
     });
+    steps.push(...custom);
     steps.sort((a, b) => a.date - b.date);
     return { opp, deadline: dl, steps, compressed };
   }
@@ -241,6 +246,10 @@
   /* «Сделай сегодня»: ближайший невыполненный шаг, просроченные — первыми. */
   M.nextAction = function (plan, done, today) {
     return plan.steps.find(s => !done[s.id]) || null;
+  };
+
+  M.preSubmitSteps = function (item) {
+    return item.steps.filter(s => !s.custom && !s.post);
   };
 
   M.progress = function (item, done) {

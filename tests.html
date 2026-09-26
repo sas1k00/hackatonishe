@@ -181,6 +181,31 @@
       eq(M.date.iso(p.steps.find(s => s.id === id).date), '2026-12-01');
     });
 
+    // ---------- по итогам интервью ----------
+    test('Интервью (завуч): шаги, где нужна школа (рекомендации, документы), помечены', () => {
+      const st = M.buildPlan(base, { turkiye: {} }, T0).items[0].steps;
+      const school = st.filter(s => s.school).map(s => s.text);
+      assert(school.some(t => /рекомендации/.test(t)) && school.some(t => /документы/.test(t)), JSON.stringify(school));
+    });
+    test('Интервью (ученик FLEX): свои задачи попадают в план и календарь, даже когда срок программы не опубликован', () => {
+      const pick = { flex: { custom: [{ id: '1', text: 'Спросить выпускника FLEX про собеседование', date: '2026-10-05' }] } };
+      const plan = M.buildPlan(base, pick, T0);
+      eq(plan.steps.length, 1); assert(plan.steps[0].custom);
+      assert(/Спросить выпускника FLEX/.test(M.toICS(plan).replace(/\r\n /g, '')));
+      const bad = M.buildPlan(base, { flex: { custom: [{ id: '2', text: 'x', date: 'завтра' }] } }, T0);
+      eq(bad.steps.length, 0, 'некорректная дата отбрасывается:');
+    });
+    test('Интервью (ученик FLEX): «заявка отправлена» закрывает подготовку, но не этап отбора после дедлайна', () => {
+      const it = M.buildPlan(base, { uwc: {} }, T0).items[0];
+      const pre = M.preSubmitSteps(it);
+      assert(pre.length === it.steps.length - 1, 'все шаги, кроме этапа отбора');
+      assert(!pre.some(s => s.post));
+    });
+    test('Интервью (родитель): у каждой возможности указана стоимость с уровнем достоверности; «бесплатно» — только если подтверждено', () => {
+      M.OPPORTUNITIES.forEach(o => { assert(o.cost && o.cost.text && ['official', 'secondary'].includes(o.cost.conf), o.id); assert([true, false, null].includes(o.free), o.id); });
+      eq(m('izho', P({ onlyFree: true })).checks.find(c => c.kind === 'free').level, 'warn', 'неизвестная стоимость — предупреждение:');
+    });
+
     // ---------- календарь ----------
     test('Календарь: корректный iCalendar — CRLF, строки ≤ 75 байт, событие на каждый шаг, напоминание', () => {
       const plan = M.buildPlan(P({ status: 'g11', ielts: 5.5 }), { nu: {}, uwc: {}, yygs: { deadline: 1 } }, T0);
