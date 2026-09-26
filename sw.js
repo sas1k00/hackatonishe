@@ -1,7 +1,7 @@
 /* Офлайн-кэш: после первого открытия приложение работает без интернета. */
-const CACHE = 'maqsat-v5';
-const ASSETS = ['./', './index.html', './manifest.webmanifest', './css/style.css?v=5',
-  './js/i18n.js?v=5', './js/data.js?v=5', './js/engine.js?v=5', './js/app.js?v=5', './icons/icon-192.png', './icons/icon-512.png'];
+const CACHE = 'maqsat-v6';
+const ASSETS = ['./', './index.html', './manifest.webmanifest', './css/style.css?v=6',
+  './js/i18n.js?v=6', './js/data.js?v=6', './js/engine.js?v=6', './js/app.js?v=6', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

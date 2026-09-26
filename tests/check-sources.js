@@ -12,15 +12,17 @@ vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'js/data.js'), 'u
 
 async function check(o) {
   try {
-    const res = await fetch(o.source.url, { redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (Maqsat source check)' }, signal: AbortSignal.timeout(20000) });
-    return { id: o.id, url: o.source.url, status: res.status, ok: res.status < 400 || res.status === 403 };
+    const res = await fetch(o.url, { redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (Maqsat source check)' }, signal: AbortSignal.timeout(20000) });
+    return { id: o.id, url: o.url, status: res.status, ok: res.status < 400 || res.status === 403 };
   } catch (e) {
-    return { id: o.id, url: o.source.url, status: 'ошибка сети', ok: false, err: e.message };
+    return { id: o.id, url: o.url, status: 'ошибка сети', ok: false, err: e.message };
   }
 }
 
 (async () => {
-  const results = await Promise.all(globalThis.M.OPPORTUNITIES.map(check));
+  // Источник карточки и ссылка «Где именно» (если есть)
+  const links = globalThis.M.OPPORTUNITIES.flatMap(o => [{ id: o.id, url: o.source.url }].concat(o.placeLink ? [{ id: o.id + ' (где)', url: o.placeLink.url }] : []));
+  const results = await Promise.all(links.map(check));
   let md = '| Возможность | Статус | Источник |\n|---|---|---|\n';
   results.forEach(r => { md += `| ${r.id} | ${r.ok ? '✓' : '✗'} ${r.status} | ${r.url} |\n`; });
   console.log(md);

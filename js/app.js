@@ -103,7 +103,7 @@
             <label class="field"><span>IELTS <span class="hint">${t('(если сдавал)')}</span></span><input type="number" name="ielts" min="1" max="9" step="0.5" inputmode="decimal" value="${p.ielts == null ? '' : p.ielts}" placeholder="${t('например, 6.0')}"></label>
           </div>
           <div class="two">
-            <label class="field"><span>${t('Средний балл')} <span class="hint">${t('(из 5, необязательно)')}</span></span><input type="number" name="avg" min="2" max="5" step="0.1" inputmode="decimal" value="${p.avg == null ? '' : p.avg}" placeholder="${t('например, 4.5')}"></label>
+            <label class="field"><span>${t('Средняя годовая оценка')} <span class="hint">${t('(по 5-балльной шкале, необязательно)')}</span></span><input type="number" name="avg" min="2" max="5" step="0.1" inputmode="decimal" value="${p.avg == null ? '' : p.avg}" placeholder="${t('например, 4.5')}" aria-describedby="avg-hint"><span class="hint" id="avg-hint">${t('Не GPA. Сложи годовые оценки по всем предметам и раздели на их число: например, пятёрки и четвёрки поровну — 4.5.')}</span></label>
             <label class="field"><span>${t('Город')}</span><select name="city">${M.CITIES.map(c => `<option value="${c.id}" ${p.city === c.id ? 'selected' : ''}>${t(c.label)}</option>`).join('')}</select></label>
           </div>
           <label class="switch"><input type="checkbox" name="school12" ${p.school12 ? 'checked' : ''}> ${t('В моей школе 12 классов (например, НИШ)')}</label>
@@ -125,7 +125,7 @@
       const avg = num(f.get('avg'), 2, 5);
       const err = app.querySelector('#err');
       if (Number.isNaN(ielts)) { err.textContent = t('IELTS — число от 1 до 9, например 6.0'); return; }
-      if (Number.isNaN(avg)) { err.textContent = t('Средний балл — число от 2 до 5, например 4.5'); return; }
+      if (Number.isNaN(avg)) { err.textContent = t('Средняя оценка — число от 2 до 5, например 4.5'); return; }
       state.profile = {
         birthYear: Number(f.get('birthYear')), birthMonth: Number(f.get('birthMonth')), status: f.get('status'),
         kz: !!f.get('kz'), school12: !!f.get('school12') || f.get('status') === 'g12', english: Number(f.get('english')), ielts, avg, city: f.get('city'),
@@ -185,6 +185,7 @@
         <h3 id="t-${o.id}">${esc(o.title)}</h3>
         <div class="org">${esc(o.org)}</div>
         <div class="tags"><span class="tag">${esc(o.kind)}</span><span class="tag">${esc(o.place)}</span>${o.free === true ? `<span class="tag free">${t('Бесплатно')}</span>` : ''}</div>
+        ${o.placeLink ? `<p class="small" style="margin:6px 0 0"><b>${t('Где именно:')}</b> <a href="${esc(o.placeLink.url)}" target="_blank" rel="noopener">${esc(o.placeLink.text)} ↗</a></p>` : ''}
       </div>
       <div class="opp-body">
         ${deadlineBlock(r)}

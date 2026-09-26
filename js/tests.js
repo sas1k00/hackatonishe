@@ -25,7 +25,7 @@
       // ---------- база ----------
       test('База: id уникальны, у всех есть https-источник', () => {
         eq(new Set(M.OPPORTUNITIES.map(o => o.id)).size, M.OPPORTUNITIES.length);
-        M.OPPORTUNITIES.forEach(o => assert(/^https:\/\//.test(o.source.url), o.id));
+        M.OPPORTUNITIES.forEach(o => assert(/^https:\/\//.test(o.source.url) && (!o.placeLink || /^https:\/\//.test(o.placeLink.url)), o.id));
       });
       test('База: у каждого дедлайна корректная дата и флаг exact; у ориентировочных есть основание', () => {
         M.OPPORTUNITIES.forEach(o => o.deadlines.forEach(d => {
